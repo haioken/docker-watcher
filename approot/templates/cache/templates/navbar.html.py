@@ -1,0 +1,140 @@
+# -*- coding:ascii -*-
+from mako import runtime, filters, cache
+UNDEFINED = runtime.UNDEFINED
+STOP_RENDERING = runtime.STOP_RENDERING
+__M_dict_builtin = dict
+__M_locals_builtin = locals
+_magic_number = 10
+_modified_time = 1516862707.8082235
+_enable_loop = True
+_template_filename = 'templates/navbar.html'
+_template_uri = 'templates/navbar.html'
+_source_encoding = 'ascii'
+_exports = []
+
+
+def render_body(context,**pageargs):
+    __M_caller = context.caller_stack._push_frame()
+    try:
+        __M_locals = __M_dict_builtin(pageargs=pageargs)
+        current = context.get('current', UNDEFINED)
+        show_logout = context.get('show_logout', UNDEFINED)
+        _ = context.get('_', UNDEFINED)
+        url_base = context.get('url_base', UNDEFINED)
+        __M_writer = context.writer()
+        __M_writer('<nav class="navbar navbar-default">\n    <div class="container-fluid">\n        <div class="navbar-header">\n            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">\n                <span class="sr-only">Toggle navigation</span>\n                <i class="mdi mdi-menu"></i>\n            </button>\n            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/status">\n              <img src="')
+        __M_writer(str(url_base))
+        __M_writer('/static/images/logo.png" alt="" class="navbar-brand">\n            </a>\n        </div>\n        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">\n\n            <ul class="nav navbar-nav">\n                <li class="dropdown ')
+        __M_writer(str('active' if current == 'library' else ''))
+        __M_writer('">\n                    <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/status" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">\n                        ')
+        __M_writer(str(_('Library')))
+        __M_writer('\n                        <i class="mdi mdi-chevron-down"></i>\n                    </a>\n                    <ul class="dropdown-menu" role="menu">\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/status">\n                                <i class="mdi mdi-bookmark"></i> ')
+        __M_writer(str(_('Status')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/manage">\n                                <i class="mdi mdi-briefcase"></i> ')
+        __M_writer(str(_('Manage')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/import">\n                                <i class="mdi mdi-archive"></i> ')
+        __M_writer(str(_('Import')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/library/stats">\n                                <i class="mdi mdi-chart-bar"></i> ')
+        __M_writer(str(_('Stats')))
+        __M_writer('\n                            </a>\n                        </li>\n                    </ul>\n                </li>\n                <li class="')
+        __M_writer(str('active' if current == 'add_movie' else ''))
+        __M_writer('">\n                    <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/add_movie">')
+        __M_writer(str(_('Add Movie')))
+        __M_writer('</a>\n                </li>\n                <li class="dropdown ')
+        __M_writer(str('active' if current == 'settings' else ''))
+        __M_writer('">\n                    <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/server" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-expanded="false">\n                        ')
+        __M_writer(str(_('Settings')))
+        __M_writer('\n                        <i class="mdi mdi-chevron-down"></i>\n                    </a>\n                    <ul class="dropdown-menu" role="menu">\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/server">\n                                <i class="mdi mdi-server"></i> ')
+        __M_writer(str(_('Server')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/search">\n                                <i class="mdi mdi-magnify"></i> ')
+        __M_writer(str(_('Search')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/quality">\n                                <i class="mdi mdi-video"></i> ')
+        __M_writer(str(_('Quality')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/indexers">\n                                <i class="mdi mdi-sitemap"></i> ')
+        __M_writer(str(_('Indexers')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/downloader">\n                                <i class="mdi mdi-download"></i> ')
+        __M_writer(str(_('Downloader')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/postprocessing">\n                                <i class="mdi mdi-file-video"></i> ')
+        __M_writer(str(_('Postprocessing')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/plugins">\n                                <i class="mdi mdi-puzzle"></i> ')
+        __M_writer(str(_('Plugins')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/logs">\n                                <i class="mdi mdi-clipboard-text"></i> ')
+        __M_writer(str(_('Logs')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/settings/system">\n                                <i class="mdi mdi-memory"></i> ')
+        __M_writer(str(_('System')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li class="divider"></li>\n')
+        if show_logout:
+            __M_writer('                        <li data-toggle="modal" data-target="#modal_logout">\n                            <a>\n                                <i class="mdi mdi-logout"></i> ')
+            __M_writer(str(_('Log Out')))
+            __M_writer('\n                            </a>\n                        </li>\n')
+        __M_writer('                        <li>\n                            <a data-toggle="modal" data-target="#modal_restart">\n                                <i class="mdi mdi-restart"></i> ')
+        __M_writer(str(_('Restart')))
+        __M_writer('\n                            </a>\n                        </li>\n                        <li>\n                            <a data-toggle="modal" data-target="#modal_shutdown">\n                                <i class="mdi mdi-power"></i> ')
+        __M_writer(str(_('Shut Down')))
+        __M_writer('\n                            </a>\n                        </li>\n                    </ul>\n                </li>\n            </ul>\n\n            <div class="navbar-right btn-group">\n                <a class="btn text-primary" href="https://www.reddit.com/r/watcher/" target="_blank" rel="noopener">\n                    <i class="mdi mdi-reddit"></i>\n                </a>\n                <a class="btn text-primary" href="https://github.com/nosmokingbandit/watcher3" target="_blank" rel="noopener">\n                    <i class="mdi mdi-github-circle"></i>\n                </a>\n            </div>\n        </div>\n    </div>\n</nav>\n\n\n<!-- Modal for Log Out, Restart, and Shutdown -->\n<div class="modal fade" id="modal_logout">\n    <div class="modal-dialog modal-sm">\n        <div class="modal-content">\n            <div class="modal-header">\n                <h4 class="modal-title">')
+        __M_writer(str(_('Log Out?')))
+        __M_writer('</h4>\n            </div>\n            <div class="modal-footer">\n                <div class="btn-group btn-group-justified">\n                    <a class="btn btn-default" data-dismiss="modal">')
+        __M_writer(str(_('Cancel')))
+        __M_writer('</a>\n                    <a class="btn btn-warning" onclick="logout(event)">')
+        __M_writer(str(_('Log Out')))
+        __M_writer('</a>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n\n<div class="modal fade" id="modal_shutdown">\n    <div class="modal-dialog modal-sm">\n        <div class="modal-content">\n            <div class="modal-header">\n                <h4 class="modal-title">')
+        __M_writer(str(_('Shut Down Watcher?')))
+        __M_writer('</h4>\n            </div>\n            <div class="modal-footer">\n                <div class="btn-group btn-group-justified">\n                    <a class="btn btn-default" data-dismiss="modal">')
+        __M_writer(str(_('Cancel')))
+        __M_writer('</a>\n                    <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/system/shutdown" class="btn btn-danger">')
+        __M_writer(str(_('Shut Down')))
+        __M_writer('</a>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n\n<div class="modal fade" id="modal_restart">\n    <div class="modal-dialog modal-sm">\n        <div class="modal-content">\n            <div class="modal-header">\n                <h4 class="modal-title">')
+        __M_writer(str(_('Restart Watcher?')))
+        __M_writer('</h4>\n            </div>\n            <div class="modal-footer">\n                <div class="btn-group btn-group-justified">\n                    <a class="btn btn-default" data-dismiss="modal">')
+        __M_writer(str(_('Cancel')))
+        __M_writer('</a>\n                    <a href="')
+        __M_writer(str(url_base))
+        __M_writer('/system/restart" class="btn btn-warning">')
+        __M_writer(str(_('Restart')))
+        __M_writer('</a>\n                </div>\n            </div>\n        </div>\n    </div>\n</div>\n')
+        return ''
+    finally:
+        context.caller_stack._pop_frame()
+
+
+"""
+__M_BEGIN_METADATA
+{"uri": "templates/navbar.html", "line_map": {"16": 0, "25": 1, "26": 8, "27": 8, "28": 9, "29": 9, "30": 15, "31": 15, "32": 16, "33": 16, "34": 17, "35": 17, "36": 22, "37": 22, "38": 23, "39": 23, "40": 27, "41": 27, "42": 28, "43": 28, "44": 32, "45": 32, "46": 33, "47": 33, "48": 37, "49": 37, "50": 38, "51": 38, "52": 43, "53": 43, "54": 44, "55": 44, "56": 44, "57": 44, "58": 46, "59": 46, "60": 47, "61": 47, "62": 48, "63": 48, "64": 53, "65": 53, "66": 54, "67": 54, "68": 58, "69": 58, "70": 59, "71": 59, "72": 63, "73": 63, "74": 64, "75": 64, "76": 68, "77": 68, "78": 69, "79": 69, "80": 73, "81": 73, "82": 74, "83": 74, "84": 78, "85": 78, "86": 79, "87": 79, "88": 83, "89": 83, "90": 84, "91": 84, "92": 88, "93": 88, "94": 89, "95": 89, "96": 93, "97": 93, "98": 94, "99": 94, "100": 98, "101": 99, "102": 101, "103": 101, "104": 105, "105": 107, "106": 107, "107": 112, "108": 112, "109": 137, "110": 137, "111": 141, "112": 141, "113": 142, "114": 142, "115": 153, "116": 153, "117": 157, "118": 157, "119": 158, "120": 158, "121": 158, "122": 158, "123": 169, "124": 169, "125": 173, "126": 173, "127": 174, "128": 174, "129": 174, "130": 174, "136": 130}, "filename": "templates/navbar.html", "source_encoding": "ascii"}
+__M_END_METADATA
+"""

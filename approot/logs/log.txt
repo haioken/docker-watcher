@@ -1,0 +1,23 @@
+INFO [2018-01-26 00:45:09,080] CPTaskScheduler._task.239: == Executing Scheduled Task: Movie Search ==
+INFO [2018-01-26 00:45:09,084] core.searcher.search_all.130: Executing search/grab for all movies.
+DEBUG [2018-01-26 00:45:09,084] core.sqldb.get_user_movies.327: Retrieving list of user's movies.
+DEBUG [2018-01-26 00:45:09,085] core.sqldb.execute.146: Executing SQL command: ['SELECT * FROM MOVIES  ORDER BY title ASC, sort_title ASC']
+INFO [2018-01-26 00:45:09,098] core.searcher._get_rss_movies.431: Picking movies to look for in RSS feed.
+INFO [2018-01-26 00:45:09,099] core.searcher._get_rss_movies.450: Aki Sora 2009 is Wanted. Will look for new releases in RSS feed.
+INFO [2018-01-26 00:45:09,099] core.searcher.verify.79: Aki Sora passes verification checks, will include title in search.
+INFO [2018-01-26 00:45:09,099] core.searcher.search_all.156: Checking RSS feeds for 1 movies.
+INFO [2018-01-26 00:45:09,099] core.searcher.rss_sync.255: Syncing indexer RSS feeds.
+INFO [2018-01-26 00:45:09,099] root._get_rss.74: Fetching latest RSS from https://nzbfinder.ws.
+INFO [2018-01-26 00:45:09,099] root._get_rss.81: RSS_SYNC: https://nzbfinder.ws/api?t=movie&cat=2000&extended=1&offset=0&apikey=APIKEY
+INFO [2018-01-26 00:45:10,972] core.providers.torrent.get_rss.147: Syncing Torrent indexer RSS feeds.
+INFO [2018-01-26 00:45:10,973] core.searcher.rss_sync.274: Parsing RSS for Aki Sora 2009
+INFO [2018-01-26 00:45:10,973] core.searcher.rss_sync.286: Nothing found in RSS for Aki Sora 2009
+INFO [2018-01-26 00:45:10,973] core.snatcher.grab_all.34: Running automatic snatcher for all movies.
+DEBUG [2018-01-26 00:45:10,973] core.sqldb.get_user_movies.327: Retrieving list of user's movies.
+DEBUG [2018-01-26 00:45:10,973] core.sqldb.execute.146: Executing SQL command: ['SELECT * FROM MOVIES  ORDER BY title ASC, sort_title ASC']
+INFO [2018-01-26 00:45:10,974] core.snatcher.grab_all.76: ######### Automatic search/snatch complete #########
+DEBUG [2018-01-26 00:45:10,974] core.sqldb.row_exists.568: Checking if name="Movie Search" exists in database table TASKS
+DEBUG [2018-01-26 00:45:10,974] core.sqldb.execute.146: Executing SQL command: ['SELECT 1 FROM TASKS WHERE name="Movie Search"']
+DEBUG [2018-01-26 00:45:10,974] core.sqldb.update.226: Updating last_execution to 2018-01-26 00:45:09 for rows that match name:Movie Search in TASKS.
+DEBUG [2018-01-26 00:45:10,974] core.sqldb.execute.146: Executing SQL command: ['UPDATE TASKS SET last_execution=? WHERE name=?', ('2018-01-26 00:45:09', 'Movie Search')]
+INFO [2018-01-26 00:45:10,981] CPTaskScheduler._task.265: == Finished Scheduled Task: Movie Search ==

@@ -1,0 +1,96 @@
+<%def name="render_plugins(kind)">
+    <%
+    fid = 0
+    %>
+    %for plugin in plugins[kind]:
+        <%
+        name = plugin[0]
+        enabled, sort = config[kind].get(name, (False, 900+fid))
+        fid += 1
+        %>
+        <li id="${kind}${fid}" class="list-group-item" data-name="${plugin[0]}" data-sort="${sort}">
+            <i class="mdi mdi-drag-horizontal sortable_handle"></i>
+            <i class="mdi mdi-checkbox-blank-outline c_box" value="${enabled}"></i>
+            ${name[:-3]}
+            %if plugin[1]:
+            <i class="mdi mdi-settings" onclick="edit_plugin_conf(event, this, '${kind}', '${plugin[1]}')"></i>
+            %endif
+        </li>
+    %endfor
+</%def>
+
+<!DOCTYPE HTML5>
+<html>
+    <head>
+        ${head}
+        <link href="${url_base}/static/css/settings/shared.css?v=001" rel="stylesheet">
+        <link href="${url_base}/static/css/settings/plugins.css?v=001" rel="stylesheet">
+
+        <script src="${url_base}/static/js/settings/shared.js?v=002" type="text/javascript"></script>
+        <script src="${url_base}/static/js/settings/plugins.js?v=001" type="text/javascript"></script>
+        <script src="${url_base}/static/js/lib/jquery.sortable.min.js?v=001" type="text/javascript"></script>
+    </head>
+    <body>
+        ${navbar}
+        <div class="container-fluid">
+            <h1>${_('Plugins')}</h1>
+
+            <h3>${_('Added')}</h3>
+            <form class="form-horizontal well" data-category="added">
+                <ul class="sortable">
+                    ${render_plugins('added')}
+                </ul>
+            </form>
+
+            <h3>${_('Snatched')}</h3>
+            <form class="form-horizontal well" data-category="snatched">
+                <ul class="sortable">
+                    ${render_plugins('snatched')}
+                </ul>
+            </form>
+
+            <h3>${_('Finished')}</h3>
+            <form class="form-horizontal well" data-category="finished">
+                <ul class="sortable list-group">
+                    ${render_plugins('finished')}
+                </ul>
+            </form>
+
+            <div class="col-md-12 well">
+                ${_('See the Wiki for plugin instruction.')}
+                <a href="https://github.com/nosmokingbandit/Watcher3/wiki/Plugins", target="_blank" rel="noopener">
+                    <i class="mdi mdi-help-circle-outline"></i>
+                </a>
+
+            </div>
+
+            <a id="save_settings" class="btn btn-success pull-right" onclick="save_settings(event, this)">
+                <i class="mdi mdi-content-save"></i>
+                ${_('Save Settings')}
+            </a>
+
+        </div>
+
+        <textarea id="template_config" class="hidden">
+            <div class="modal fade" id="modal_plugin_conf" data-folder="{folder}" data-filename="{filename}">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h4 class="modal-title">{name}</h4>
+                        </div>
+                        <div class="modal-body">
+                            {config}
+                        </div>
+                        <div class="modal-footer">
+                            <div class="btn-group btn-group-justified">
+                                <a class="btn btn-default" data-dismiss="modal">${_('Close')}</a>
+                                <a class="btn btn-success" onclick="save_plugin_conf(event, this)">${_('Save Config')}</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </textarea>
+
+    </body>
+</html>

@@ -1,0 +1,33 @@
+table#tasks{
+    font-size: 0.9em;
+}
+
+table#tasks th.center,
+table#tasks td.center{
+    width: 1%;
+    text-align: center;
+}
+
+table#tasks i.disabled{
+    opacity: 0.5;
+    transition: inherit;
+}
+
+.panel-footer{
+    word-wrap: break-word;
+}
+
+.progress{
+    margin-top: 1.25em;
+}
+
+#donate{
+    padding-top: 2em;
+    font-size: 0.75em;
+    margin: 0 auto;
+    text-align: center;
+}
+
+#donate i{
+    transition: none;
+}

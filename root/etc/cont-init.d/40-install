@@ -1,0 +1,16 @@
+#!/usr/bin/with-contenv bash
+
+# check/set multicast
+# fetch site
+if [ ! -d /approot/.git ]; then
+    echo "No repo found, pulling."
+	git clone https://github.com/haioken/Phlex-able /approot
+fi
+
+echo "Updating Watcher"
+cd /approot
+git pull
+
+# permissions
+chown -R abc:abc /config/www
+chmod -R 777 /config

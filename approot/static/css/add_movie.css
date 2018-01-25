@@ -1,0 +1,61 @@
+div#search_bar{
+    font-size: 1.5em;
+}
+
+div#search_bar i{
+    font-size: 1.5em;
+}
+
+ul#movies{
+    transition: none;
+    /*display: none;*/
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+}
+
+li.movie{
+    width: 10em;
+    margin: 1em 0.25em;
+    text-align: center;
+}
+
+li.movie img{
+    height: 15em;
+    width: 100%;
+    box-shadow: 1px 1px 4px rgba(0,0,0,0.4);
+    cursor: pointer;
+    margin-bottom: -0.25em;
+}
+
+li.movie div.movie_actions{
+    margin: 0 0 1em 0;
+}
+
+li.movie span.title{
+    display: block;
+}
+
+span.year{
+    font-size: 0.8em;
+    opacity: 0.5;
+}
+
+
+/* details modal */
+div.modal-header h3{
+    display: block;
+}
+
+div.modal-header .label{
+    margin-bottom: 0.5em;
+    display: inline-block;
+}
+
+iframe#trailer {
+    background: url("../images/trailer_unavailable.png") no-repeat 50% 50%;
+}
+
+div.modal-body p.plot{
+    text-indent: 2em;
+}

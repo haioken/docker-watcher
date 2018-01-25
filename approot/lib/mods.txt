@@ -1,0 +1,22 @@
+    The following modifications have been made to modules in Lib. Reference this document
+when updating or replacing included modules.
+    Line numbers assume all modifications have been inserted from top-down, or in order
+of recording.
+
+# transmissionrpc
+## client.py
++ 21    Add import for urllib.request.request
++ 371   Create request object for torrent file
+* 372   Pass request to urlopen
+
+
+# cheroot
+## workers/threadpool.py
++ 247   Close socket after shutting down
+
+
+# PTN
+## patterns.py
++ 30	Add pattern for special edition tags
+## parse.py
++ 83-84	Clean punctuation in edition list 
