@@ -20,4 +20,5 @@ RUN apk update \
 # ports and volumes
 VOLUME /config
 
-CMD ["/usr/bin/supervisord", "-c", "/config/supervisord.conf"]
+#CMD ["/usr/bin/supervisord", "-c", "/config/supervisord.conf"]
+CMD ["/usr/bin/python3", "/approot/watcher.py", "-c", "/config/watcher.cfg"]
