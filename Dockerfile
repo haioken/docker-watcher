@@ -15,9 +15,9 @@ COPY root /
 COPY approot /approot
 
 RUN apk update \
-    && apk --no-cache add iptables
+    && apk --no-cache add iptables supervisor
     
 # ports and volumes
 VOLUME /config
 
-CMD ["supervisord", "-c", "/config/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-c", "/config/supervisord.conf"]
