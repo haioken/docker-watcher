@@ -6,10 +6,11 @@ import time
 import cherrypy
 import datetime
 import core
-from core import config, library, searchresults, searcher, snatcher, movieinfo, notification, plugins, downloaders
+from core import config, library, searchresults, searcher, snatcher, notification, plugins, downloaders
+from core.library import Metadata, Manage
+from core.movieinfo import TheMovieDatabase, YouTube
 from core.providers import torrent, newznab
 from core.helpers import Conversions
-from core.rss import predb
 import backup
 from gettext import gettext as _
 logging = logging.getLogger(__name__)
@@ -33,31 +34,25 @@ class Ajax(object):
 
     '''
 
-    def __init__(self):
-        self.tmdb = movieinfo.TMDB()
-        self.config = config.Config()
-        self.metadata = library.Metadata()
-        self.predb = predb.PreDB()
-        self.searcher = searcher.Searcher()
-        self.score = searchresults.Score()
-        self.snatcher = snatcher.Snatcher()
-
     @cherrypy.expose
     @cherrypy.tools.json_out()
-    def library(self, sort_key, sort_direction, limit=50, offset=0):
+    def library(self, sort_key, sort_direction, limit=50, offset=0, hide_finished=False):
         ''' Get 50 movies from library
         sort_key (str): column name to sort by
         sort_direction (str): direction to sort [ASC, DESC]
 
         limit: int number of movies to get                  <optional - default 50>
         offset: int list index postition to start slice     <optional - default 0>
+        hide_finished (bool): get finished/disabled movies or not
+
+        hide_finished will be converted to bool if string is passed
 
         Gets a 25-movie slice from library sorted by sort key
 
         Returns list of dicts of movies
         '''
 
-        return core.sql.get_user_movies(sort_key, sort_direction.upper(), limit, offset, hide_finished=core.CONFIG['Server']['hidefinished'])
+        return core.sql.get_user_movies(sort_key, sort_direction.upper(), limit, offset, hide_finished=True if hide_finished == 'True' else False)
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -65,14 +60,28 @@ class Ajax(object):
         ''' Search tmdb for movies
         search_term (str): title and year of movie (Movie Title 2016)
 
-        Returns str json-encoded list of dicts that contain tmdb's data.
+        Returns list of dicts that contain tmdb's data.
         '''
 
-        results = self.tmdb.search(search_term)
+        results = TheMovieDatabase.search(search_term)
         if not results:
             logging.info('No Results found for {}'.format(search_term))
 
         return results
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def tmdb_categories(self, cat, tmdbid=None):
+        ''' Get categories of movies from TMDB
+
+        Returns list of dicts of movies
+        '''
+        return TheMovieDatabase.get_category(cat, tmdbid)[:8]
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def quick_titles(self):
+        return core.sql.quick_titles()
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -110,8 +119,7 @@ class Ajax(object):
 
         Returns str
         '''
-
-        return movieinfo.trailer('{} {}'.format(title, year))
+        return YouTube.trailer('{} {}'.format(title, year))
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -125,7 +133,12 @@ class Ajax(object):
         '''
         movie = json.loads(data)
 
-        return core.manage.add_movie(movie, full_metadata=False)
+        response = Manage.add_movie(movie, full_metadata=False)
+
+        if response['response'] and core.CONFIG['Search']['searchafteradd'] and movie['year'] != 'N/A':
+            threading.Thread(target=searcher._t_search_grab, args=(movie,)).start()
+
+        return response
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -153,7 +166,7 @@ class Ajax(object):
             return {'response': True, 'message': _('Settings saved.')}
 
         try:
-            self.config.write(save_data)
+            config.write(save_data)
         except (SystemExit, KeyboardInterrupt):
             raise
         except Exception as e:
@@ -171,7 +184,7 @@ class Ajax(object):
         Returns dict ajax-style response
         '''
 
-        return core.manage.remove_movie(imdbid)
+        return Manage.remove_movie(imdbid)
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -204,13 +217,14 @@ class Ajax(object):
 
         Returns dict ajax-style response
         '''
+        logging.info('Starting user-requested backlog search for {}'.format(imdbid))
 
         movie = core.sql.get_movie_details('imdbid', imdbid)
 
         if not movie:
             return {'response': False, 'error': Errors.database_read.format(imdbid)}
         else:
-            success = self.searcher.search(imdbid, movie['title'], movie['year'], movie['quality'])
+            success = searcher.search(imdbid, movie['title'], movie['year'], movie['quality'])
             status = core.sql.get_movie_details('imdbid', imdbid)['status']
 
             if success:
@@ -251,7 +265,7 @@ class Ajax(object):
         data = dict(core.sql.get_single_search_result('guid', guid))
         if data:
             data['year'] = year
-            return self.snatcher.download(data)
+            return snatcher.download(data)
         else:
             return {'response': False, 'error': Errors.database_read.format(kind)}
 
@@ -268,15 +282,15 @@ class Ajax(object):
 
         sr_orig = core.sql.get_single_search_result('guid', guid)
 
-        sr = core.manage.searchresults(guid, 'Bad')
-        core.manage.markedresults(guid, 'Bad', imdbid=imdbid)
+        sr = Manage.searchresults(guid, 'Bad')
+        Manage.markedresults(guid, 'Bad', imdbid=imdbid)
 
         if sr:
             response = {'response': True, 'message': _('Marked release as Bad.')}
         else:
             response = {'response': False, 'error': Errors.database_write}
 
-        response['movie_status'] = core.manage.movie_status(imdbid)
+        response['movie_status'] = Manage.movie_status(imdbid)
         if not response['movie_status']:
             response['error'] = (Errors.database_write)
             response['response'] = False
@@ -450,20 +464,21 @@ class Ajax(object):
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
-    def update_movie_options(self, quality, status, imdbid):
+    def update_movie_options(self, quality, status, filters, imdbid):
         ''' Updates quality settings for individual title
         quality (str): name of new quality
         status (str): management state ('automatic', 'disabled')
+        filters (str): JSON.stringified dict of filter words
         imdbid (str): imdb identification number
 
         Returns dict ajax-style response
         '''
 
-        success = {'response': True, 'message': _('Movie settings updated.')}
+        success = {'response': True, 'message': _('Movie options updated.')}
 
-        logging.info('Updating quality profile to {} for {}.'.format(quality, imdbid))
+        logging.info('Setting Quality and filters for {}.'.format(imdbid))
 
-        if not core.sql.update('MOVIES', 'quality', quality, 'imdbid', imdbid):
+        if not core.sql.update_multiple_values('MOVIES', {'quality': quality, 'filters': filters}, 'imdbid', imdbid):
             return {'response': False, 'error': Errors.database_write}
 
         logging.info('Updating status to {} for {}.'.format(status, imdbid))
@@ -471,7 +486,7 @@ class Ajax(object):
         if status == 'Automatic':
             if not core.sql.update('MOVIES', 'status', 'Waiting', 'imdbid', imdbid):
                 return {'response': False, 'error': Errors.database_write}
-            new_status = core.manage.movie_status(imdbid)
+            new_status = Manage.movie_status(imdbid)
             if not new_status:
                 return {'response': False, 'error': Errors.database_write}
             else:
@@ -611,7 +626,7 @@ class Ajax(object):
             metadata = {}
             response = {'progress': [index + 1, length]}
             try:
-                metadata = self.metadata.from_file(path)
+                metadata = Metadata.from_file(path)
 
                 if not metadata.get('imdbid'):
                     metadata['imdbid'] = ''
@@ -629,8 +644,10 @@ class Ajax(object):
 
                 if response['response'] == 'complete':
                     p = metadata.get('poster_path')
-                    metadata = self.metadata.convert_to_db(metadata)
+                    r = metadata.get('resolution')
+                    metadata = Metadata.convert_to_db(metadata)
                     metadata['poster_path'] = p
+                    metadata['resolution'] = r
 
                 metadata['size'] = os.path.getsize(path)
                 metadata['human_size'] = Conversions.human_file_size(metadata['size'])
@@ -684,7 +701,7 @@ class Ajax(object):
         if corrected_movies:
             logging.info('{} corrected movies, gathering metadata.'.format(len(corrected_movies)))
             for data in corrected_movies:
-                tmdbdata = self.tmdb._search_tmdbid(data['tmdbid'])
+                tmdbdata = TheMovieDatabase._search_tmdbid(data['tmdbid'])
                 if tmdbdata:
                     tmdbdata = tmdbdata[0]
                     data['year'] = tmdbdata['release_date'][:4]
@@ -703,7 +720,7 @@ class Ajax(object):
                 movie['origin'] = 'Directory Import'
                 movie['finished_date'] = today
                 movie['id'] = movie['tmdbid']
-                response = core.manage.add_movie(movie, full_metadata=True)
+                response = Manage.add_movie(movie, full_metadata=True)
                 if response['response'] is True:
                     fake_results.append(searchresults.generate_simulacrum(movie))
                     yield json.dumps({'response': True, 'progress': [progress, length], 'movie': movie})
@@ -720,7 +737,7 @@ class Ajax(object):
                 yield json.dumps({'response': False, 'movie': movie, 'progress': [progress, length], 'error': Errors.tmdb_not_found.format(data['title'])})
                 progress += 1
 
-        fake_results = self.score.score(fake_results, imported=True)
+        fake_results = searchresults.score(fake_results, imported=True)
 
         for i in success:
             for r in fake_results:
@@ -777,12 +794,41 @@ class Ajax(object):
         Returns dict ajax-style response
         '''
 
-        r = self.metadata.update(imdbid, tmdbid)
+        r = Metadata.update(imdbid, tmdbid)
 
         if r['response'] is True:
             return {'response': True, 'message': _('Metadata updated.')}
         else:
             return r
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def single_movie_details(self, key, value):
+        ''' Gets single movie's details from database
+        key (str): key for sql.get_movie_details
+        value (str): value for sql.get_movie_details
+
+        Returns dict
+        '''
+        return core.sql.get_movie_details(key, value)
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def set_movie_details(self, data):
+        ''' Updates movie in database
+        data (dict): movie fields and values to update
+
+        data *must* include valid tmdbid
+
+        Returns dict
+        '''
+        data = json.loads(data)
+        tmdbid = data.pop('tmdbid')
+
+        if not core.sql.update_multiple_values('MOVIES', data, 'tmdbid', tmdbid):
+            return {'response': False, 'error': Errors.database_write}
+        else:
+            return {'response': True, 'message': 'Database Updated'}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -825,7 +871,12 @@ class Ajax(object):
 
         for movie in movies:
 
-            tmdb_data = self.tmdb._search_imdbid(movie['imdbid'])
+            if not movie['imdbid']:
+                yield json.dumps({'response': False, 'movie': movie, 'progress': [progress, length], 'error': Errors.tmdb_not_found.format("NONE")})
+                progress += 1
+                continue
+
+            tmdb_data = TheMovieDatabase._search_imdbid(movie['imdbid'])
             if not tmdb_data or not tmdb_data[0].get('id'):
                 yield json.dumps({'response': False, 'movie': movie, 'progress': [progress, length], 'error': Errors.tmdb_not_found.format(movie['imdbid'])})
                 progress += 1
@@ -840,19 +891,19 @@ class Ajax(object):
             movie['finished_file'] = (movie.get('finished_file') or '').strip()
             movie['origin'] = 'Kodi Import'
 
-            response = core.manage.add_movie(movie)
+            response = Manage.add_movie(movie)
             if response['response'] is True:
                 fake_results.append(searchresults.generate_simulacrum(movie))
-                yield json.dumps({'response': True, 'progress': [progress, length], 'movie': movie})
+                yield json.dumps({'response': True, 'progress': [progress, length], 'title': movie['title'], 'imdbid': movie['imdbid']})
                 progress += 1
                 success.append(movie)
                 continue
             else:
-                yield json.dumps({'response': False, 'movie': movie, 'progress': [progress, length], 'error': response['error']})
+                yield json.dumps({'response': False, 'title': movie['title'], 'imdbid': movie['imdbid'], 'progress': [progress, length], 'error': response['error']})
                 progress += 1
                 continue
 
-        fake_results = self.score.score(fake_results, imported=True)
+        fake_results = searchresults.score(fake_results, imported=True)
 
         for i in success:
             for r in fake_results:
@@ -916,7 +967,7 @@ class Ajax(object):
         if corrected_movies:
             logging.info('Adding {} Plex movies to library.'.format(len(corrected_movies)))
             for movie in corrected_movies:
-                tmdbdata = self.tmdb._search_imdbid(movie['imdbid'])
+                tmdbdata = TheMovieDatabase._search_imdbid(movie['imdbid'])
                 if tmdbdata:
                     tmdbdata = tmdbdata[0]
                     movie['year'] = tmdbdata['release_date'][:4]
@@ -933,7 +984,7 @@ class Ajax(object):
 
             fm = False
             if not movie.get('imdbid') and movie.get('tmdbid'):
-                tmdb_data = self.tmdb._search_tmdbid(movie['tmdbid'])
+                tmdb_data = TheMovieDatabase._search_tmdbid(movie['tmdbid'])
                 if tmdb_data:
                     movie.update(tmdb_data[0])
                     fm = True
@@ -948,14 +999,14 @@ class Ajax(object):
                 movie['origin'] = 'Plex Import'
 
                 if not movie.get('id'):
-                    tmdb_data = self.tmdb._search_imdbid(movie['imdbid'])
+                    tmdb_data = TheMovieDatabase._search_imdbid(movie['imdbid'])
                     if tmdb_data:
                         movie.update(tmdb_data[0])
                     else:
                         yield json.dumps({'response': False, 'progress': [progress, length], 'title': movie['title'], 'error': Errors.tmdb_not_found.format(movie['imdbid'])})
                         progress += 1
                         continue
-                response = core.manage.add_movie(movie, full_metadata=fm)
+                response = Manage.add_movie(movie, full_metadata=fm)
                 if response['response'] is True:
                     fake_results.append(searchresults.generate_simulacrum(movie))
                     yield json.dumps({'response': True, 'progress': [progress, length], 'title': movie['title'], 'imdbid': movie['imdbid']})
@@ -973,7 +1024,7 @@ class Ajax(object):
                 continue
 
         if fake_results:
-            fake_results = self.score.score(fake_results, imported=True)
+            fake_results = searchresults.score(fake_results, imported=True)
 
         for i in success:
             for r in fake_results:
@@ -1025,7 +1076,7 @@ class Ajax(object):
 
         logging.info('Adding {} Wanted CouchPotato movies to library.'.format(len(wanted)))
         for movie in wanted:
-            response = core.manage.add_movie(movie, full_metadata=True)
+            response = Manage.add_movie(movie, full_metadata=True)
             if response['response'] is True:
                 yield json.dumps({'response': True, 'progress': [progress, length], 'movie': movie})
                 progress += 1
@@ -1041,7 +1092,7 @@ class Ajax(object):
             movie['status'] = 'Disabled'
             movie['origin'] = 'CouchPotato Import'
 
-            response = core.manage.add_movie(movie, full_metadata=True)
+            response = Manage.add_movie(movie, full_metadata=True)
             if response['response'] is True:
                 fake_results.append(searchresults.generate_simulacrum(movie))
                 yield json.dumps({'response': True, 'progress': [progress, length], 'movie': movie})
@@ -1053,7 +1104,7 @@ class Ajax(object):
                 progress += 1
                 continue
 
-        fake_results = self.score.score(fake_results, imported=True)
+        fake_results = searchresults.score(fake_results, imported=True)
 
         for i in success:
             for r in fake_results:
@@ -1089,7 +1140,7 @@ class Ajax(object):
 
             logging.info('Performing backlog search for {} {}.'.format(title, year))
 
-            if not self.searcher.search(imdbid, title, year, quality):
+            if not searcher.search(imdbid, title, year, quality):
                 response = {'response': False, 'error': Errors.database_write, 'imdbid': imdbid, 'index': i + 1}
             else:
                 response = {'response': True, 'index': i + 1}
@@ -1111,7 +1162,7 @@ class Ajax(object):
         logging.info('Performing bulk metadata update for {} movies.'.format(len(movies)))
 
         for i, movie in enumerate(movies):
-            r = self.metadata.update(movie.get('imdbid'), movie.get('tmdbid'))
+            r = Metadata.update(movie.get('imdbid'), movie.get('tmdbid'))
 
             if r['response'] is False:
                 response = {'response': False, 'error': r['error'], 'imdbid': movie['imdbid'], 'index': i + 1}
@@ -1168,7 +1219,7 @@ class Ajax(object):
                 yield json.dumps({'response': False, 'error': _('Unable to purge search results.'), 'imdbid': imdbid, 'index': i + 1})
                 continue
 
-            db_reset = {'quality': 'Default',
+            db_reset = {'quality': config.default_profile(),
                         'status': 'Waiting',
                         'finished_date': None,
                         'finished_score': None,
@@ -1178,7 +1229,7 @@ class Ajax(object):
                         'predb_backlog': None
                         }
 
-            if not core.sql.update_multiple_values('MOVIES', db_reset, imdbid=imdbid):
+            if not core.sql.update_multiple_values('MOVIES', db_reset, 'imdbid', imdbid):
                 yield json.dumps({'response': False, 'error': Errors.database_write, 'imdbid': imdbid, 'index': i + 1})
                 continue
 
@@ -1217,7 +1268,7 @@ class Ajax(object):
 
         Returns dict of library stats
         '''
-        return core.manage.get_stats()
+        return Manage.get_stats()
 
     @cherrypy.expose
     @cherrypy.tools.json_out()

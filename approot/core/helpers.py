@@ -33,9 +33,10 @@ class Url(object):
     trans = {i: ' ' for i in map(ord, '+.-_')}
 
     @staticmethod
-    def normalize(s):
+    def normalize(s, ascii_only=False):
         ''' "normalizes" strings for url params
         s (str): text to format
+        ascii_only (bool): reduce to ascii-only characters   <default False>
 
         Strips/replaces unicode chars and replaces punctuation with spaces
 
@@ -49,12 +50,15 @@ class Url(object):
         while '  ' in s:
             s = s.replace('  ', ' ')
 
-        s = unicodedata.normalize('NFKD', s).encode('ascii', 'ignore').decode('ascii')
+        s = unicodedata.normalize('NFKD', s)
+
+        if ascii_only:
+            s = s.encode('ascii', 'ignore').decode('ascii')
 
         return s.lower().strip()
 
     @staticmethod
-    def open(url, post_data=None, timeout=30, headers={}, stream=False, proxy_bypass=False):
+    def open(url, post_data=None, timeout=30, headers={}, stream=False, proxy_bypass=False, expose_user_agent=False):
         ''' Assemles and executes requests call
         url (str): url to request
         post-data (dict): data to send via post                     <optional - default None>
@@ -67,8 +71,10 @@ class Url(object):
 
         Returns object requests response
         '''
-
-        headers['User-Agent'] = random.choice(Url.user_agents)
+        if expose_user_agent:
+            headers['User-Agent'] = 'Watcher3'
+        else:
+            headers['User-Agent'] = random.choice(Url.user_agents)
 
         verifySSL = core.CONFIG.get('Server', {}).get('verifyssl', False)
 
@@ -153,7 +159,7 @@ class Torrent(object):
                 raw = torrent if file_bytes else Url.open(torrent, stream=True).content
                 metadata = bencodepy.decode(raw)
                 hashcontents = bencodepy.encode(metadata[b'info'])
-                return hashlib.sha1(hashcontents).hexdigest().lower()
+                return hashlib.sha1(hashcontents).hexdigest().upper()
             except Exception as e:
                 logging.error('Unable to get torrent hash', exc_info=True)
                 return ''

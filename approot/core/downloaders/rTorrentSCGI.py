@@ -48,8 +48,6 @@ def add_torrent(data):
                     {'response': False, 'error': 'exception'}
 
     '''
-    global client
-
     logging.info('Sending torrent {} to rTorrent SCGI.'.format(data['title']))
 
     conf = core.CONFIG['Downloader']['Torrent']['rTorrentSCGI']
@@ -60,7 +58,7 @@ def add_torrent(data):
             return {'response': False, 'error': connected}
 
     try:
-        downloadid = Torrent.get_hash(data['torrentfile']).upper()
+        downloadid = Torrent.get_hash(data['torrentfile'])
 
         if conf['addpaused']:
             client.load(data['torrentfile'])
@@ -91,8 +89,6 @@ def cancel_download(downloadid):
 
     Returns bool
     '''
-    global client
-
     logging.info('Cancelling download # {} in rTorrent SCGI.'.format(downloadid))
 
     conf = core.CONFIG['Downloader']['Torrent']['rTorrentSCGI']

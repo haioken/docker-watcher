@@ -1,10 +1,10 @@
-$(document).ready(function(){
-    url_base = $("meta[name='url_base']").attr("content");
-    show_notifs = JSON.parse($("meta[name='enable_notifs']").attr("content") || "true");
-    language = $("meta[name='language']").attr("content") || "en";
+window.addEventListener("DOMContentLoaded", function(){
+    url_base = document.querySelector("meta[name='url_base']").content;
+    show_notifs = JSON.parse(document.querySelector("meta[name='enable_notifs']").content || "true");
+    language = document.querySelector("meta[name='language']").content || "en";
 
     if(show_notifs){
-        notifs = JSON.parse($("textarea#notifications_json").text());
+        notifs = JSON.parse(document.querySelector('script#notifications_json').innerHTML);
 
         show_notifications(notifs);
     }
@@ -14,7 +14,7 @@ function show_notifications(notifs){
     /* Shows notifications in DOM
     notifs (list): tuples of notification options, settings
     */
-    $.each(notifs, function(i, notif){
+    each(notifs, function(notif, index){
         notif[1]["onClose"] = remove_notif;
         var n = $.notify(notif[0], notif[1]);
         n["$ele"].attr("data-index", notif[1]["index"]);
@@ -44,7 +44,7 @@ $.notifyDefaults({type: "success",
                     });
 
 function remove_notif(){
-    var index = $(this).data("index");
+    var index = this[0].dataset.index;
     if(index === undefined){
         return false;
     }
@@ -55,17 +55,22 @@ function remove_notif(){
 
 
 function format_template(t, d){
+    // t: template node
+    // d: dict to substitue
+    // Returns HTML node
     for(var p in d){
-        t=t.replace(new RegExp('{'+p+'}','g'), d[p]);
+        t = t.replace(new RegExp('{'+p+'}','g'), d[p] || '');
     }
-    return t;
+    return $.parseHTML(t.trim())[0];
 }
 
 function each(arr, fn){
     // Executes fn(array_item, array_index) for each item in arr
-    var i = arr.length;
-    while (--i >= 0){
-        fn(arr[i], i)
+    // Break loop by returning false in fn
+    for (var i = 0; i < arr.length; i++){
+        if(fn(arr[i], i) === false){
+            break
+        }
     }
 }
 

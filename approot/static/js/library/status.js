@@ -1,90 +1,114 @@
-$(document).ready(function(){
+window.addEventListener("DOMContentLoaded", function(){
     current_page = 1;
 
-    movie_count = parseInt($("meta[name='movie_count']").attr("content"));
+    movie_count = parseInt(document.querySelector('meta[name="movie_count"]').content);
+    finished_count = parseInt(document.querySelector('meta[name="finished_count"]').content);
     cached_movies = Array(movie_count);
 
     per_page = 50;
 
-    $page_select = $("select#page_number");
-    $page_select.on("change", function(){
-        current_page = parseInt(this.value);
+    $page_select = document.querySelector("select#page_number");
+
+    $page_select.addEventListener('change', function(event){
+        current_page = parseInt(event.target.value);
         load_library(movie_sort_key, movie_sort_direction, current_page);
     });
 
     pages = Math.ceil(movie_count / per_page);
-    $("a#page_count").text("/ "+pages)
+    document.querySelector("button#page_count").innerText = "/ "+pages;
 
-    each(Array(pages), function(item, index){
-        $page_select.prepend(`<option value="${index+1}">${index+1}</option>`);
-    });
-    $page_select.find("option")[0].setAttribute("selected", true);
+    if(pages > 0){
+        each(Array(pages), function(item, index){
+            $page_select.innerHTML += `<option value="${index+1}">${index+1}</option>`;
+        });
+    } else {
+        $page_select.innerHTML += `<option value="">0</option>`;
+    }
+
+    $page_select.value = '1';
 
     loading_library = false; // Indicates that a library ajax request is being executed
 
-    $sort_direction_button = $("a#sort_direction > i");
-    $sort_key_select = $("select#movie_sort_key");
-    $movie_list = $("ul#movie_list");
+    $sort_direction_button = document.querySelector("button#sort_direction > i");
+    $movie_list = document.getElementById("movie_list");
+    $hide_finished_movies_toggle = document.getElementById('hide_finished_movies');
 
-    movie_template = $("textarea#template_movie")[0].innerText
-    info_template = $("textarea#template_movie_info")[0].innerText;
-    delete_template = $("textarea#template_delete")[0].innerText;
+    templates = {movie: document.querySelector("template#template_movie").innerHTML,
+                 info: document.querySelector("template#template_movie_info").innerHTML,
+                 delete: document.querySelector("template#template_delete").innerHTML,
+                 release: document.querySelector("template#template_release").innerHTML
+                }
+    status_colors = {Finished: 'success',
+                     Snatched: 'primary',
+                     Found: 'info',
+                     Available: 'info',
+                     Wanted: 'warning',
+                     Waiting: 'dark',
+                     Bad: 'danger'
+                     }
 
     var cookie = read_cookie();
     echo.init({offsetVertical: 100,
                callback: function(element, op){
-                   $(element).css("opacity", 1)
+                   element.style.opacity = 1;
                }
     });
 
 /* Read cookie vars */
-    movie_layout = cookie["movie_layout"] || "posters";
+    movie_layout = (cookie["movie_layout"] || '').split(' ')[0] || "posters";
     movie_sort_direction = cookie["movie_sort_direction"] || "desc";
     movie_sort_key = cookie["movie_sort_key"] || "sort_title";
+    hide_finished_movies = cookie["hide_finished_movies"] || "False";
     if(movie_sort_key == 'status_key'){
         movie_sort_key = 'status'
     } else if(movie_sort_key == 'title') {
         movie_sort_key = 'sort_title'
     }
 /* Set sort ui elements off cookie */
-    $movie_list.removeClass().addClass(movie_layout);
-    $(`div#movie_layout > div > a[data-layout="${movie_layout}"]`).addClass("active");
+    $movie_list.classList = '';
+    $movie_list.classList.add(movie_layout);
+    document.querySelector(`div#movie_layout > div > button[data-layout="${movie_layout}"]`).classList.add("active");
     echo.render();
 
     if (movie_sort_direction == "asc") {
-        $sort_direction_button.addClass("mdi-sort-ascending");
+        $sort_direction_button.classList.add("mdi-sort-ascending");
     } else {
-        $sort_direction_button.addClass("mdi-sort-descending");
+        $sort_direction_button.classList.add("mdi-sort-descending");
     }
 
-    $sort_key_select.find(`option[value=${movie_sort_key}]`).attr("selected", "true")
+    document.querySelector(`select#movie_sort_key > option[value=${movie_sort_key}]`).setAttribute("selected", true)
+
+    if(hide_finished_movies == "True"){
+        $hide_finished_movies_toggle.setAttribute('value', 'True');
+        $hide_finished_movies_toggle.classList.remove("mdi-checkbox-blank-outline");
+        $hide_finished_movies_toggle.classList.add("mdi-checkbox-marked");
+    }
 
 /* Finish by loading page 1 */
     load_library(movie_sort_key, movie_sort_direction, 1)
 
 /* Toolbar action bindings
     /* Movie sort key */
-	$("select#movie_sort_key").change(function(event){
+    document.getElementById('movie_sort_key').addEventListener('change', function(event){
+        event.preventDefault();
         if(loading_library){
-            event.preventDefault();
             return false
         }
-		movie_sort_key = $(this).find("option:selected").val();
+
+        movie_sort_key = event.target.value;
 
         var reset_cache = false;
-        for(i=0; i < cached_movies.length; i++){
-            if(cached_movies[i] === undefined){
+        each(cached_movies, function(cm){
+            if(cm === undefined){
                 reset_cache = true;
-                break
+                return false;
             }
-        }
-
+        })
         if(reset_cache){
             cached_movies = Array(movie_count);
         } else {
             sort_movie_cache(movie_sort_key);
         }
-
 		set_cookie("movie_sort_key", movie_sort_key);
 
         load_library(movie_sort_key, movie_sort_direction, current_page);
@@ -94,47 +118,60 @@ $(document).ready(function(){
     // See fn switch_sort_direction()
 
     /* Movie layout style */
-    $("div#movie_layout > div > a").click(function(){
-        var $this = $(this);
-        if ($this.hasClass("active")) {
-            return
-        } else {
-            var movie_layout = $this.attr("data-layout");
-            $this.siblings().removeClass("active");
-            $this.addClass("active");
-            $movie_list.removeClass().addClass(movie_layout);
-            set_cookie('movie_layout', movie_layout)
-            echo.render();
-        }
-    });
+    each(document.querySelectorAll('div#movie_layout > div > button'), function(button){
+        button.addEventListener('click', function(event){
+            if(button.classList.contains('active')){
+                return;
+            } else {
+                var movie_layout = button.dataset.layout;
+                each(button.parentElement.children, function(sibling){
+                    sibling.classList.remove('active');
+                })
+                button.classList.add('active');
+                $movie_list.classList = '';
+                $movie_list.classList.add(movie_layout);
+                set_cookie('movie_layout', movie_layout)
+                echo.render();
+            }
+        })
 
-    // toggle checkbox status on click
-    $("body").on("click", "i.c_box", function(){
-        $this = $(this);
-        // turn on
-        if( $this.attr("value") == "False" ){
-            $this.attr("value", "True");
-            $this.removeClass("mdi-checkbox-blank-outline").addClass("mdi-checkbox-marked");
-        // turn off
-        } else if ($this.attr("value") == "True" ){
-            $this.attr("value", "False");
-            $this.removeClass("mdi-checkbox-marked").addClass("mdi-checkbox-blank-outline");
+    })
+
+    document.getElementsByTagName('body')[0].addEventListener('click', function(event){
+        if(event.target.classList.contains('c_box')){
+            var c = event.target;
+            if(c.getAttribute('value') == 'False'){
+                c.setAttribute('value', 'True');
+                c.classList.remove('mdi-checkbox-blank-outline');
+                c.classList.add('mdi-checkbox-marked');
+            } else {
+                c.setAttribute('value', 'False');
+                c.classList.remove('mdi-checkbox-marked');
+                c.classList.add('mdi-checkbox-blank-outline');
+            }
         }
-    });
+    })
+
+    $hide_finished_movies_toggle.addEventListener('click', function(event){
+        var hf;
+        if(event.target.getAttribute('value') == 'False'){
+            set_cookie('hide_finished_movies', 'True')
+            cached_movies = Array(movie_count - finished_count)
+            hf = 'True'
+        } else {
+            set_cookie('hide_finished_movies', 'False')
+            cached_movies = Array(movie_count)
+            hf = 'False'
+        }
+        $page_select.value = 1;
+        load_library(movie_sort_key, movie_sort_direction, 1, hf);
+    })
 
 });
 
 exp_date = new Date();
 exp_date.setFullYear(exp_date.getFullYear() + 10);
 exp_date = exp_date.toUTCString();
-
-jQuery.fn.justtext = function(){
-    return $(this).clone()
-        .children()
-        .remove()
-        .end()
-        .text();
-};
 
 function read_cookie() {
     /* Read document cookie
@@ -189,19 +226,25 @@ function sort_movie_cache(key){
     });
 }
 
-function load_library(sort_key, sort_direction, page){
+function load_library(sort_key, sort_direction, page, hf){
     /* Loads library into DOM
     sort_key: str value with which to sort movies
     sort_direction: str [asc, desc] direction to sort movies
     page: int page number
+    hf: str ("True", "False") load hidden/finished movies <optional>
+
+    hf will be read from checkbox in DOM if not passed
 
     Clears movies from dom and loads new page.
     Checks if all movies are cached and loads them. If not cached requests movies from server.
     */
+    if(page == 0){
+        return;
+    }
 
     loading_library = true;
 
-    $movie_list.empty();
+    $movie_list.innerHTML = '';
 
     var offset = (page * per_page) - per_page;
 
@@ -215,6 +258,10 @@ function load_library(sort_key, sort_direction, page){
         }
     }
 
+    if(hf === undefined){
+        hf = $hide_finished_movies_toggle.getAttribute("value");
+    }
+
     if(use_cache) {
         _render_library(cached_page);
         loading_library = false;
@@ -223,7 +270,8 @@ function load_library(sort_key, sort_direction, page){
             "sort_key": sort_key,
             "sort_direction": sort_direction,
             "limit": per_page,
-            "offset": offset
+            "offset": offset,
+            "hide_finished": hf
         })
         .done(function(response){
             Array.prototype.splice.apply(cached_movies, [offset, response.length].concat(response))
@@ -242,8 +290,8 @@ function load_library(sort_key, sort_direction, page){
 
 function _render_library(movies){
     // Renders movies list items after loading page
-    $.each(movies, function(i, movie){
-        var template = movie_template;
+    each(movies, function(movie, index){
+        var template = templates.movie;
         movie["url_base"] = url_base;
 
         movie["status_select"] = movie["status"]; // Keep "Disabled" for dropdown
@@ -252,59 +300,40 @@ function _render_library(movies){
             movie["status"] = "Finished";
         }
 
+        movie['status_color'] = status_colors[movie['status']]
+
         movie["media_release_date"] = (movie["media_release_date"] || "Unannounced")
 
-        if (movie["poster"]){
-            movie["poster"] = "posters/" + movie["poster"]
-        } else {
-            movie["poster"] = "static/images/missing_poster.jpg"
+        if(!movie["poster"]){
+            movie["poster"] = "missing_poster.jpg"
         }
 
-
         movie["status_translated"] = _(movie["status"])
-        $item = $(format_template(template, movie));
+        $item = format_template(template, movie);
 
         var score = Math.round(movie["score"]) / 2;
         if(score % 1 == 0.5){
             var i_half_star = Math.floor(score);
         }
-        $item.find("span.score > i.mdi").each(function(i, elem){
-            if(i+1 <= score){
-                $(elem).removeClass("mdi-star-outline").addClass("mdi-star");
-            } else if(i == i_half_star){
-                $(elem).removeClass("mdi-star-outline").addClass("mdi-star-half");
+        each($item.querySelectorAll("span.score > i.mdi"), function(star, index){
+            if(index + 1 <= score){
+                star.classList.remove("mdi-star-outline");
+                star.classList.add("mdi-star");
+            } else if(index == i_half_star){
+                star.classList.remove("mdi-star-outline");
+                star.classList.add("mdi-star-half");
             }
 
         });
-        $item.data("movie", movie);
-        $movie_list.append($item)
+        $item.dataset.movie = JSON.stringify(movie);
+        $movie_list.innerHTML += $item.outerHTML;
     });
 
     echo.init({offsetVertical: 100,
         callback: function(element, op){
-            $(element).css("opacity", 1)
+            element.style.opacity = 1;
         }
     });
-}
-
-function change_page(event, elem, page){
-    // page: int page #
-    // Fails if loading_library is true
-    // Constructs then forwards request to load_library
-    event.preventDefault();
-
-    if(loading_library){
-        return false;
-    }
-
-    var $btn = $(elem);
-
-    $page_buttons.removeClass("active");
-    $btn.addClass("active");
-
-    load_library(movie_sort_key, movie_sort_direction, page)
-
-    current_page = page;
 }
 
 function change_page_sequential(event, direction){
@@ -319,7 +348,7 @@ function change_page_sequential(event, direction){
     if(page < 1 || page > pages){
         return false
     }
-    $page_select.val(page.toString());
+    $page_select.value = page;
 
     load_library(movie_sort_key, movie_sort_direction, page)
     current_page = page;
@@ -332,11 +361,13 @@ function switch_sort_direction(event, elem){
         return false
     }
 
-    if ($sort_direction_button.hasClass("mdi-sort-ascending")){
-        $sort_direction_button.removeClass("mdi-sort-ascending").addClass("mdi-sort-descending");
+    if ($sort_direction_button.classList.contains("mdi-sort-ascending")){
+        $sort_direction_button.classList.remove("mdi-sort-ascending");
+        $sort_direction_button.classList.add("mdi-sort-descending");
         movie_sort_direction = "desc";
     } else {
-        $sort_direction_button.removeClass("mdi-sort-descending").addClass("mdi-sort-ascending");
+        $sort_direction_button.classList.remove("mdi-sort-descending");
+        $sort_direction_button.classList.add("mdi-sort-ascending");
         movie_sort_direction = "asc";
     }
 
@@ -352,7 +383,9 @@ function open_info_modal(event, elem){
     // Generate and show movie info modal
     event.preventDefault();
 
-    var movie = $(elem).data("movie");
+    var movie = JSON.parse(elem.dataset.movie);
+    Object.assign(movie, JSON.parse(movie.filters)); // Merges filters column from db into movies object for templating
+
     if(movie["origin"] === null){
         movie["origin"] = ""
     }
@@ -367,17 +400,18 @@ function open_info_modal(event, elem){
         if(response["response"] == true){
             movie["table"] = _results_table(response["results"]);
         } else {
-            movie["table"] = `<div class="search_result">
-                                  <span>Nothing found yet. Next search sheduled for ${response["next"]}.</span>
-                              </div>`;
+            movie["table"] = `<li class="search_result list-group-item">
+                                  <span>Nothing found yet. Next search scheduled for ${response["next"]}.</span>
+                              </li>`;
         }
+        var modal = format_template(templates.info, movie);
 
-        var modal = format_template(info_template, movie);
-        $movie_status = $(modal);
+	    movie['title_escape'] = movie['title'].replace(/'/g, "\\'");
+        $movie_status_modal = $(modal);
 
-        $movie_status.data("movie", movie);
-        $movie_status.find("select#movie_quality > option[value='"+movie["quality"]+"']").attr("selected", true)
-        $status_select = $movie_status.find("select#movie_status");
+        $movie_status_modal.data("movie", movie);
+        $movie_status_modal.find("select#movie_quality > option[value='"+movie["quality"]+"']").attr("selected", true)
+        $status_select = $movie_status_modal.find("select#movie_status");
 
         if(movie["status_select"] == "Disabled"){
              $status_select.find("option[value='Disabled']").attr("selected", true)
@@ -386,13 +420,14 @@ function open_info_modal(event, elem){
         }
 
         if(movie["status"] == "Finished" || movie["status"] == "Disabled"){
-            var label = `<span class="label label-success">
-                            File: ${movie["finished_file"]}
-                         </span>`
-            $movie_status.find("div.modal-header").append($(label));
+            $movie_status_modal.find("span#finished_file_badge").removeClass('hidden');
         }
 
-        $movie_status.modal("show");
+        $movie_status_modal.modal("show");
+        $movie_status_modal.on('hidden.bs.modal', function(){
+            this.parentNode.removeChild(this);
+        })
+
     })
     .fail(function(data){
         var err = data.status + " " + data.statusText
@@ -406,77 +441,49 @@ function _results_table(results){
     */
 
     rows = "";
-    $.each(results, function(i, result){
+    each(results, function(result, index){
         if(result["freeleech"] >= 1){
-            var fl = `<span class="label label-default" title="Freeleech: ${result["freeleech"]}"><i class="mdi mdi-heart"></i></span>`
+            result['fl'] = `<span class="label label-default" title="Freeleech: ${result["freeleech"]}"><i class="mdi mdi-heart"></i></span>`
         } else if(result["freeleech"] > 0 && result["freeleech"] < 1 ){
-            var fl = `<span class="label label-default" title="Freeleech: ${result["freeleech"]}"><i class="mdi mdi-heart-half-full"></i></span>`
+            result['fl'] = `<span class="label label-default" title="Freeleech: ${result["freeleech"]}"><i class="mdi mdi-heart-half-full"></i></span>`
         } else {
-            var fl = "";
+            result['fl'] = "";
         }
 
         result["translated_status"] = _(result["status"]);
+        result['status_color'] = status_colors[result['status']]
+        rows += format_template(templates.release, result).outerHTML;
+    });
 
-        rows += `<div class="search_result">
-                    <div class="col-md-12">
-                        <span class="title" title="${result['title']}">
-                            ${result["title"]}
-                        </span>
-                    </div>
-                    <div class="result_info col-md-6">
-                        <span class="label status ${result["status"]}" title="Status">${result["translated_status"]}</span>
-                        <span class="label label-default" title="Link Type">${result["type"]}</span>
-                        <span class="label label-default" title="Indexer">${result["indexer"]}</span>
-                        <span class="label label-default" title="Size">${result["size"]}</span>
-                        <span class="label label-default" title="Score">${result["score"]}</span>
-                        ${fl}
-                    </div>
-                    <div class="result_actions col-md-6 btn-group btn-group-justified">
-                        <a class="btn btn-sm btn-default" href="${result['info_link']}" target="_blank" rel="noopener" title="Visit Indexer">
-                            <i class="mdi mdi-information-outline"></i>
-                        </a>
-                        <a class="btn btn-sm btn-default" title="Download" onclick="manual_download(event, this, '${result["guid"]}', '${result["type"]}', '${result["imdbid"]}')">
-                            <i class="mdi mdi-download"></i>
-                        </a>
-                        <a class="btn btn-sm btn-default" onclick="mark_bad(event, this, '${result["guid"]}', '${result["imdbid"]}')" title="Mark release as Bad">
-                            <i class="mdi mdi-cancel"></i>
-                        </a>
-                    </div>
-                </div>
-                `
-    })
     return rows
 }
 
-function manual_search(event, elem, imdbid){
-    $i = $(elem).find("i.mdi");
+function manual_search(event, button, imdbid){
+    var $i = button.querySelector('i.mdi');
 
-    $i.removeClass("mdi-magnify").addClass("mdi-circle-outline animated");
+    $i.classList.remove("mdi-magnify");
+    $i.classList.add("mdi-circle");
+    $i.classList.add("animated");
 
-    var $search_results_table = $("div#search_results_table");
-    $search_results_table.slideUp();
+    var $search_results_table = document.getElementById("search_results_table");
+    var orig_maxHeight = getComputedStyle($search_results_table).maxHeight;
+    $search_results_table.style.overflowY = 'hidden';
+    $search_results_table.style.maxHeight = '0px';
 
     var table = "";
-
 
     $.post(url_base + "/ajax/search", {"imdbid":imdbid})
     .done(function(response){
         if(response["response"] == true && response["results"].length > 0){
-            $search_results_table.html(_results_table(response["results"]));
-            $search_results_table.slideDown();
-
+            $search_results_table.innerHTML = _results_table(response["results"]);
         } else if(response["response"] == true && response["results"].length == 0){
-            table = `<div class="search_result">
-                         <span>Nothing found yet. Next search sheduled for ${response["next"]}.</span>
+            table = `<div class="search_result list-group-item">
+                         <span>Nothing found yet. Next search scheduled for ${response["next"]}.</span>
                      </div>`;
-            $search_results_table.html(table);
-            $search_results_table.slideDown();
-
+            $search_results_table.innerHTML = table;
         } else {
             $.notify({message: response["error"]}, {type: "danger"});
-            $search_results_table.slideDown();
         }
-
         if(response["movie_status"]){
             update_movie_status(imdbid, response["movie_status"]);
         }
@@ -486,15 +493,21 @@ function manual_search(event, elem, imdbid){
         $.notify({message: err}, {type: "danger", delay: 0});
     })
     .always(function(){
-        $i.removeClass("mdi-circle-outline animated").addClass("mdi-magnify");
+        $search_results_table.style.maxHeight = orig_maxHeight;
+        $i.classList.remove("mdi-circle");
+        $i.classList.add("mdi-magnify");
+        $i.classList.remove('animated');
+        $search_results_table.style.overflowY = 'scroll';
     });
 }
 
 function update_metadata(event, elem, imdbid, tmdbid){
     event.preventDefault();
 
-    var $i = $(elem).find("i.mdi");
-    $i.removeClass("mdi-tag-text-outline").addClass("mdi-circle-outline animated");
+    var $i = elem.querySelector('i.mdi');
+    $i.classList.remove("mdi-tag-text-outline");
+    $i.classList.add("mdi-circle");
+    $i.classList.add("animated");
 
     $.post(url_base + "/ajax/update_metadata", {
         "imdbid": imdbid,
@@ -502,26 +515,28 @@ function update_metadata(event, elem, imdbid, tmdbid){
     })
     .done(function(response){
         if(response["response"] == true){
-            $.notify({message: response["message"]})
+            $.notify({message: response["message"]});
         } else {
-            $.notify({message: response["error"]}, {type: "danger"})
+            $.notify({message: response["error"]}, {type: "danger"});
         }
     })
     .fail(function(data){
-        var err = data.status + " " + data.statusText
+        var err = data.status + " " + data.statusText;
         $.notify({message: err}, {type: "danger", delay: 0});
     })
     .always(function(){
-        $i.removeClass("mdi-circle-outline animated").addClass("mdi-tag-text-outline");
+        $i.classList.remove("mdi-circle");
+        $i.classList.remove("animated");
+        $i.classList.add("mdi-tag-text-outline");
     });
 }
 
 function remove_movie(event, elem, imdbid){
     event.preventDefault();
 
-    var movie = $movie_status.data("movie");
+    var movie = $movie_status_modal.data("movie");
 
-    var modal = format_template(delete_template, movie);
+    var modal = format_template(templates.delete, movie);
     $delete = $(modal);
 
     if(!movie["finished_file"]){
@@ -529,9 +544,10 @@ function remove_movie(event, elem, imdbid){
     }
 
     $delete.modal("show");
-    $movie_status.css("opacity", 0);
+    $movie_status_modal.css("opacity", 0);
     $delete.on('hide.bs.modal', function(){
-        $movie_status.css("opacity", 1);
+        $movie_status_modal.css("opacity", 1);
+        $delete.remove();
     });
 }
 
@@ -539,11 +555,9 @@ function _remove_movie(event, elem, imdbid){
     /* Removes movie from library
     imdbid: str imdb id# of movie to remove
     */
+    var movie = $movie_status_modal.data("movie");
 
-    var $this = $(elem);
-    var movie = $movie_status.data("movie");
-
-    if($("div#delete_file > i.c_box").attr("value") == "True"){
+    if(document.querySelector("div#delete_file > i.c_box").getAttribute("value") == "True"){
         var delete_file = true;
     } else {
         var delete_file = false;
@@ -554,8 +568,8 @@ function _remove_movie(event, elem, imdbid){
         .done(function(response){
             if(response["response"] == true){
                 $.notify({message: response["message"]});
-                $movie_list.find(`li[data-imdbid="${imdbid}"]`).remove();
-                $movie_status.modal("hide");
+                $movie_list.querySelector(`li[data-imdbid="${imdbid}"]`).outerHTML = '';
+                $movie_status_modal.modal("hide");
             } else {
                 $.notify({message: response["error"]}, {type: "danger"})
             }
@@ -563,7 +577,7 @@ function _remove_movie(event, elem, imdbid){
             var index = cached_movies.map(function(e){ return e.imdbid; }).indexOf(imdbid);
             cached_movies.splice(index, 1);
 
-            $movie_status.modal("hide");
+            $movie_status_modal.modal("hide");
 
         })
         .fail(function(data){
@@ -597,15 +611,20 @@ function _remove_movie(event, elem, imdbid){
 }
 
 function update_movie_options(event, elem, imdbid){
-    var $this = $(this);
-    var $i = $this.find("i");
+    var $i = elem.querySelector('i');
 
-    var quality = $("select#movie_quality").val();
-    var status = $("select#movie_status").val();
+    var quality = document.getElementById('movie_quality').value;
+    var status = document.getElementById('movie_status').value;
+
+    var filters = {};
+    each(document.querySelectorAll('#settings_advanced input'), function(input){
+        filters[input.id] = input.value;
+    });
 
     $.post(url_base+"/ajax/update_movie_options", {
         "quality": quality,
         "status": status,
+        "filters": JSON.stringify(filters),
         "imdbid": imdbid
     })
     .done(function(response){
@@ -625,11 +644,12 @@ function update_movie_options(event, elem, imdbid){
 function manual_download(event, elem, guid, kind, imdbid){
     event.preventDefault();
 
-    var $this = $(elem);
-    var $i = $this.find("i.mdi");
-    $i.removeClass("mdi-download").addClass("mdi-circle-outline animated");
+    var $i = elem.querySelector('i.mdi');
+    $i.classList.remove("mdi-download");
+    $i.classList.add("mdi-circle");
+    $i.classList.add("animated");
 
-    var year = $movie_status.find("div.modal-header span.year").text();
+    var year = $movie_status_modal.find("div.modal-heade3wr span.year").text();
 
     $.post(url_base + "/ajax/manual_download", {
         "year": year,
@@ -641,9 +661,7 @@ function manual_download(event, elem, guid, kind, imdbid){
             $.notify({message: response["message"]})
 
             update_movie_status(imdbid, "Snatched");
-
-            var $label = $this.closest("div.search_result").find("span.status");
-            $label.removeClass($label.text()).addClass("Snatched").text("Snatched");
+            update_release_status(guid, 'Snatched');
         } else {
             $.notify({message: response["error"]}, {type: "danger"})
         }
@@ -653,7 +671,9 @@ function manual_download(event, elem, guid, kind, imdbid){
         $.notify({message: err}, {type: "danger", delay: 0});
     })
     .always(function(){
-        $i.removeClass("mdi-circle-outline animated").addClass("mdi-download");
+        $i.classList.remove("mdi-circle");
+        $i.classList.remove("animated");
+        $i.classList.add("mdi-download");
     });
 }
 
@@ -663,11 +683,12 @@ function mark_bad(event, elem, guid, imdbid){
     imdbid: str imdb id# of movie
     */
     event.preventDefault();
-    $this = $(elem);
 
-    var $i = $this.find("i.mdi");
+    var $i = elem.querySelector("i.mdi");
 
-    $i.removeClass("mdi-cancel").addClass("mdi-circle-outline animated");
+    $i.classList.remove("mdi-cancel");
+    $i.classList.add("mdi-circle");
+    $i.classList.add("animated");
 
     $.post(url_base + "/ajax/mark_bad", {
         "guid": guid,
@@ -682,8 +703,7 @@ function mark_bad(event, elem, guid, imdbid){
 
         if (response["response"] == true){
             $.notify({message: response["message"]})
-            var $label = $this.closest("div.search_result").find("span.status");
-            $label.removeClass("Available Snatched Finished").addClass("Bad").text(_("Bad"));
+            update_release_status(guid, 'Bad')
         } else {
             $.notify({message: response["error"]}, {type: "danger"})
         };
@@ -693,7 +713,9 @@ function mark_bad(event, elem, guid, imdbid){
         $.notify({message: err}, {type: "danger", delay: 0});
     })
     .always(function(){
-        $i.removeClass("mdi-circle-outline animated").addClass("mdi-cancel");
+        $i.classList.remove("mdi-circle");
+        $i.classList.remove("animated");
+        $i.classList.add("mdi-cancel");
     });
 }
 
@@ -706,20 +728,52 @@ function update_movie_status(imdbid, status){
         status = "Finished"
     }
 
-    var $status_label = $movie_list.find(`li[data-imdbid="${imdbid}"] span.status`)
-    $status_label.removeClass($status_label.text());
-    $status_label.addClass(status).text(status);
+    var label = document.querySelector(`ul#movie_list > li[data-imdbid="${imdbid}"] span.status`)
+
+    if(label){
+        label.textContent = status;
+        label.classList = `badge badge-${status_colors[status]} status`;
+    }
+
+    var $status_label = $movie_list.querySelector(`li[data-imdbid="${imdbid}"] span.status`)
+    $status_label.classList.remove($status_label.innerText);
+    $status_label.classList.add(status);
+    $status_label.innerText = status;
     return
 }
 
-function update_result_status($child, status){
+function update_release_status(guid, status){
     /* Updates status label for search result
-    $child: jquery object of any element inside the div.search_result of the target
+    guid: str guid of target release
     status: str status to update label to
     */
 
-    var $status_label = $child.closest("div.search_result").find("span.status");
-    $status_label.removeClass($status_label.text());
-    $status_label.addClass(status).text(status);
+    var label = document.querySelector(`li.search_result[data-guid="${guid}"] span.status`)
+
+    if(label){
+        label.textContent = status;
+        label.classList = `badge badge-${status_colors[status]} status`;
+    }
+
+}
+
+function swap_settings(event){
+    // Changes modal between basic and advanced settings
+
+    var $i = event.target;
+    var $basic = document.getElementById('settings_basic');
+    var $advanced = document.getElementById('settings_advanced');
+
+    if($i.dataset.open == 'basic'){
+        $i.style.transform = 'rotate(-135deg)';
+        $advanced.classList.remove('hide');
+        $basic.classList.add('hide');
+        $i.dataset.open = 'advanced';
+    } else {
+        $i.style.transform = 'rotate(0deg)';
+        $advanced.classList.add('hide');
+        $basic.classList.remove('hide');
+        $i.dataset.open = 'basic';
+    }
 
 }

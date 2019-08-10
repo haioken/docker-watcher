@@ -5,22 +5,19 @@ import cherrypy
 import core
 import os
 import time
-from base64 import b16encode
+import hashlib
 
 from core import searcher, postprocessing
 from core.rss import imdb, popularmovies
-from core.cp_plugins.taskscheduler import SchedulerPlugin
+from lib.cherrypyscheduler import SchedulerPlugin
 from core import trakt
-from core.library import Metadata
+from core.library import Metadata, Manage
 
 logging = logging.getLogger(__name__)
 
-md = Metadata()
+
 pp = postprocessing.Postprocessing()
-search = searcher.Searcher()
-imdb = imdb.ImdbRss()
-popular_feed = popularmovies.PopularMoviesFeed()
-trakt = trakt.Trakt()
+search = searcher
 
 
 def create_plugin():
@@ -37,6 +34,7 @@ def create_plugin():
     PopularMoviesSync.create()
     PostProcessingScan.create()
     TraktSync.create()
+    FileScan.create()
     core.scheduler_plugin.subscribe()
 
 
@@ -79,6 +77,7 @@ class PostProcessingScan(object):
 
         minsize = core.CONFIG['Postprocessing']['Scanner']['minsize'] * 1048576
 
+        files = []
         if conf['newfilesonly']:
             t = core.scheduler_plugin.record.get('PostProcessing Scan', {}).get('last_execution')
             if not t:
@@ -88,11 +87,22 @@ class PostProcessingScan(object):
             threshold = time.mktime(le.timetuple())
 
             logging.info('Scanning for new files only (last scan: {}).'.format(d, le))
-            files = [os.path.join(d, i) for i in os.listdir(d) if os.path.getmtime(os.path.join(d, i)) > threshold and os.path.getsize(os.path.join(d, i)) > minsize]
-        else:
-            files = [os.path.join(d, i) for i in os.listdir(d) if os.path.getsize(os.path.join(d, i)) > minsize]
 
-        if not files:
+            for i in os.listdir(d):
+                f = os.path.join(d, i)
+                if os.path.isfile(f) and os.path.getmtime(f) > threshold and os.path.getsize(f) > minsize:
+                    files.append(f)
+                elif os.path.isdir(f) and os.path.getmtime(f) > threshold:
+                    files.append(f)
+        else:
+            for i in os.listdir(d):
+                f = os.path.join(d, i)
+                if os.path.isfile(f) and os.path.getsize(f) > minsize:
+                    files.append(f)
+                elif os.path.isdir(f):
+                    files.append(f)
+
+        if files == []:
             logging.info('No new files found in directory scan.')
             return
 
@@ -107,7 +117,7 @@ class PostProcessingScan(object):
             if r:
                 logging.info('Found match for {} in releases: {}.'.format(fname, r['title']))
             else:
-                r['guid'] = 'POSTPROCESSING{}'.format(b16encode(fname.encode('ascii', errors='ignore')).decode('utf-8').zfill(16)[:16])
+                r['guid'] = 'postprocessing{}'.format(hashlib.md5(fname.encode('ascii', errors='ignore')).hexdigest()).lower()
                 logging.info('Unable to find match in database for {}, release cannot be marked as Finished.'.format(fname))
 
             d = {'apikey': core.CONFIG['Server']['apikey'],
@@ -178,7 +188,7 @@ class MetadataUpdate(object):
         logging.info('Updating metadata for: {}.'.format(', '.join([i['title'] for i in u])))
 
         for i in u:
-            md.update(i.get('imdbid'), tmdbid=i.get('tmdbid'), force_poster=False)
+            Metadata.update(i.get('imdbid'), tmdbid=i.get('tmdbid'), force_poster=False)
 
         return
 
@@ -238,7 +248,7 @@ class ImdbRssSync(object):
         else:
             auto_start = False
 
-        SchedulerPlugin.ScheduledTask(hr, min, interval, imdb.get_rss, auto_start=auto_start, name='IMDB Sync')
+        SchedulerPlugin.ScheduledTask(hr, min, interval, imdb.sync, auto_start=auto_start, name='IMDB Sync')
         return
 
 
@@ -256,7 +266,7 @@ class PopularMoviesSync(object):
         else:
             auto_start = False
 
-        SchedulerPlugin.ScheduledTask(hr, min, interval, popular_feed.get_feed, auto_start=auto_start, name='PopularMovies Sync')
+        SchedulerPlugin.ScheduledTask(hr, min, interval, popularmovies.sync_feed, auto_start=auto_start, name='PopularMovies Sync')
         return
 
 
@@ -281,5 +291,21 @@ class TraktSync(object):
         else:
             auto_start = False
 
-        SchedulerPlugin.ScheduledTask(hr, min, interval, trakt.trakt_sync, auto_start=auto_start, name='Trakt Sync')
+        SchedulerPlugin.ScheduledTask(hr, min, interval, trakt.sync, auto_start=auto_start, name='Trakt Sync')
+        return
+
+
+class FileScan(object):
+    ''' Scheduled task to automatically sync selected Trakt lists '''
+
+    @staticmethod
+    def create():
+        interval = 24 * 3600
+
+        hr = core.CONFIG['System']['FileManagement']['scanmissinghour']
+        min = core.CONFIG['System']['FileManagement']['scanmissingmin']
+
+        auto_start = core.CONFIG['System']['FileManagement']['scanmissingfiles']
+
+        SchedulerPlugin.ScheduledTask(hr, min, interval, Manage.scanmissingfiles, auto_start=auto_start, name='Missing Files Scan')
         return

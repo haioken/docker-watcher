@@ -35,6 +35,10 @@ class App(object):
             'error_page.404': self.error_page_404
         })
 
+        # Lock down settings if required
+        if core.CONFIG['Server']['adminrequired']:
+            self.settings._cp_config['auth.require'] = [core.auth.is_admin]
+
         if core.CONFIG['Server']['checkupdates']:
             scheduler.AutoUpdateCheck.update_check(install=False)
 
@@ -79,8 +83,8 @@ class App(object):
     postprocessing_template = Template(filename='templates/settings/postprocessing.html', module_directory=core.MAKO_CACHE)
     plugins_template = Template(filename='templates/settings/plugins.html', module_directory=core.MAKO_CACHE)
     logs_template = Template(filename='templates/settings/logs.html', module_directory=core.MAKO_CACHE)
+    system_template = Template(filename='templates/settings/system.html', module_directory=core.MAKO_CACHE)
 
-    system_template = Template(filename='templates/system.html', module_directory=core.MAKO_CACHE)
     shutdown_template = Template(filename='templates/system/shutdown.html', module_directory=core.MAKO_CACHE)
     restart_template = Template(filename='templates/system/restart.html', module_directory=core.MAKO_CACHE)
     update_template = Template(filename='templates/system/update.html', module_directory=core.MAKO_CACHE)
@@ -102,13 +106,10 @@ class App(object):
         page = path[0] if len(path) > 0 else 'status'
 
         if page == 'status':
-            if core.CONFIG['Server']['hidefinished']:
-                movie_count = core.sql.get_library_count(hide_finished=True)
-                hidden_count = core.sql.get_library_count() - movie_count
-            else:
-                movie_count = core.sql.get_library_count()
-                hidden_count = 0
-            return App.status_template.render(profiles=core.CONFIG['Quality']['Profiles'].keys(), movie_count=movie_count, hidden_count=hidden_count, **self.defaults())
+
+            mc, fc = core.sql.get_library_count()
+
+            return App.status_template.render(profiles=core.CONFIG['Quality']['Profiles'].keys(), movie_count=mc, finished_count=fc, **self.defaults())
         elif page == 'manage':
             movies = core.sql.get_user_movies()
             return App.manage_template.render(movies=movies, profiles=core.CONFIG['Quality']['Profiles'].keys(), **self.defaults())
@@ -135,13 +136,15 @@ class App(object):
             else:
                 return self.error_page_404()
         elif page == 'stats':
+            App.stats_template = Template(filename='templates/library/stats.html', module_directory=core.MAKO_CACHE)
+
             return App.stats_template.render(**self.defaults())
         else:
             return self.error_page_404()
 
     @cherrypy.expose
     def add_movie(self):
-        return App.add_movie_template.render(profiles=[i for i in core.CONFIG['Quality']['Profiles'] if i != 'Default'], **self.defaults())
+        return App.add_movie_template.render(profiles=[(k, v.get('default', False)) for k, v in core.CONFIG['Quality']['Profiles'].items()], **self.defaults())
 
     @cherrypy.expose
     def settings(self, *path):
@@ -192,9 +195,10 @@ class App(object):
             t = int(time.time())
             dt = time.strftime('%a, %B %d, %Y %H:%M:%S %z', time.localtime(t))
 
-            return App.system_template.render(tasks=json.dumps(tasks), system=system, server_time=[dt, t], **self.defaults())
+            return App.system_template.render(config=core.CONFIG['System'], tasks=json.dumps(tasks), system=system, server_time=[dt, t], **self.defaults())
         else:
             return self.error_page_404()
+    settings._cp_config = {}
 
     @cherrypy.expose
     def system(self, *path, **kwargs):
@@ -218,5 +222,5 @@ class App(object):
         return App.head_template.render(url_base=core.URL_BASE, uitheme=core.CONFIG['Server']['uitheme'], notifications=json.dumps([i for i in core.NOTIFICATIONS if i is not None]), language=core.LANGUAGE)
 
     def nav_bar(self, current=None):
-        show_logout = True if cherrypy.session.get(core.SESSION_KEY) else False
-        return App.navbar_template.render(url_base=core.URL_BASE, current=current, show_logout=show_logout)
+        username = cherrypy.session.get(core.SESSION_KEY)
+        return App.navbar_template.render(url_base=core.URL_BASE, current=current, username=username)

@@ -1,14 +1,16 @@
 import core
-from core.movieinfo import TMDB
+from core.movieinfo import TheMovieDatabase
+from core.library import Manage
+from core import searcher
 import cherrypy
 import threading
-
+import os
+import json
 import logging
-
 
 logging = logging.getLogger(__name__)
 
-api_version = 2.2
+api_version = 2.3
 
 ''' API
 
@@ -27,29 +29,31 @@ All successul method calls then append additional key:value pairs to the output 
 mode=liststatus:
     Description:
         Effectively a database dump of the MOVIES table
-        Will return one value if imdbid is passed, else returns all movies
+        Additional params (besides mode and apikey) will be applied as filters to the movie database
+            For example, passing &imdbid=tt1234557 will only return movies with the imdbid tt1234567.
+            Multiple filters can be applied using the columns described in core.sql
 
     Example:
         Request:
-            ?apikey=123456789&mode=liststaus&imdbid=tt1234567
-        Response:
-            {'movie': {'key': 'value', 'key2', 'value2'}}
-
-        Request:
-            ?apikey=123456789&mode=liststaus
+            ?apikey=123456789&mode=liststatus
         Response:
             {'movies': [{'key': 'value', 'key2', 'value2'}, {'key': 'value', 'key2', 'value2'}]}
+
+        Request:
+            ?apikey=123456789&mode=liststatus&origin=Search
+        Response:
+            {'movies': [{'key': 'value', 'origin', 'Search'}, {'key': 'value', 'origin', 'Search'}]}
 
 mode=addmovie
     Description:
         Adds a movie to the user's library
         Accepts imdb and tmdb id #s
         Imdb id must include 'tt'
-        Will add using 'Default' quality profile unless specified otherwise
+        Will add using Default quality profile unless specified otherwise
 
     Example:
         Request:
-            ?apikey=123456789&mode=addmovie&imdbid=tt1234567
+            ?apikey=123456789&mode=addmovie&imdbid=tt1234567&quality=Default
         Response:
             {'message': 'MOVIE TITLE YEAR added to wanted list.'}
 
@@ -89,6 +93,22 @@ mode=version
         Response:
             {'version': '4fcdda1df1a4ff327c3219311578d703a288e598', 'api_version': 1.0}
 
+mode=poster
+    Description:
+        Returns desired poster image as data stream with 'image/jpeg' as Content-Type header
+        If an error occurs, returns JSON
+
+    Example:
+        Request:
+            ?apikey=123456789&mode=poster&imdbid=tt1234567
+        Response:
+            <image data>
+
+        Request:
+            ?apikey=123456789&mode=poster&imdbid=tt0000000
+        Response:
+            {'response': false, 'error': 'file not found: tt0000000.jpg'}
+
 mode=server_shutdown
     Description:
         Gracefully terminate Watcher server and child processes.
@@ -122,18 +142,27 @@ Major version changes can be expected to break api interactions
 
 2.0     Change to semantically correct json. Responses are now bools instead of str 'true'/'false'
 2.1     Adjust addmovie() to pass origin argument. Adjust addmovie() to search tmdb for itself rather than in core.ajax()
-2.1     Update documentation for all methods
+2.2     Update documentation for all methods
+2.3     Update dispatch method. Allow arbitrary filters in liststatus.
 '''
+
+
+def api_json_out(func):
+    ''' Decorator to return json from api request
+    Use this rather than cherrypy.tools.json_out. The cherrypy tool changes the
+        request handler which only applies to the method being called, in this
+        case default(). Using this allows dispatched methods to return json
+        while still allowing methods to return other content types (ie poster())
+    '''
+    def decor(*args, **kwargs):
+        cherrypy.response.headers['Content-Type'] = 'application/json'
+        return json.dumps(func(*args, **kwargs)).encode('utf-8')
+    return decor
 
 
 class API(object):
 
-    def __init__(self):
-        self.tmdb = TMDB()
-        return
-
     @cherrypy.expose()
-    @cherrypy.tools.json_out()
     def default(self, **params):
         ''' Get handler for API calls
 
@@ -149,109 +178,79 @@ class API(object):
 
         if 'apikey' not in params:
             logging.warning('API request failed, no key supplied.')
-            return {'response': False, 'error': 'no api key supplied'}
+            return json.dumps({'response': False, 'error': 'no api key supplied'})
 
-        # check for api key
         if serverkey != params['apikey']:
             logging.warning('Invalid API key in request: {}'.format(params['apikey']))
-            return {'response': False, 'error': 'incorrect api key'}
+            return json.dumps({'response': False, 'error': 'incorrect api key'})
+        params.pop('apikey')
 
         # find what we are going to do
         if 'mode' not in params:
-            return {'response': False, 'error': 'no api mode specified'}
+            return json.dumps({'response': False, 'error': 'no api mode specified'})
 
-        if params['mode'] == 'liststatus':
-
-            if 'imdbid' in params:
-                return self.liststatus(imdbid=params['imdbid'])
-            else:
-                return self.liststatus()
-
-        elif params['mode'] == 'addmovie':
-            if 'imdbid' not in params and 'tmdbid' not in params:
-                return {'response': False, 'error': 'no movie id supplied'}
-            if params.get('imdbid') and params.get('tmdbid'):
-                return {'response': False, 'error': 'multiple movie ids supplied'}
-            else:
-                quality = params.get('quality')
-                if params.get('imdbid'):
-                    return self.addmovie(imdbid=params['imdbid'], quality=quality)
-                elif params.get('tmdbid'):
-                    return self.addmovie(tmdbid=params['tmdbid'], quality=quality)
-        elif params['mode'] == 'removemovie':
-            if 'imdbid' not in params:
-                return {'response': False, 'error': 'no imdbid supplied'}
-            else:
-                imdbid = params['imdbid']
-            return self.removemovie(imdbid)
-
-        elif params['mode'] == 'version':
-            return self.version()
-
-        elif params['mode'] == 'getconfig':
-            return {'response': True, 'config': core.CONFIG}
-
-        elif params['mode'] == 'server_shutdown':
-            threading.Timer(1, core.shutdown).start()
-            return {'response': True}
-
-        elif params['mode'] == 'server_restart':
-            threading.Timer(1, core.restart).start()
-            return {'response': True}
-
+        mode = params.pop('mode')
+        if not hasattr(self, mode):
+            return {'response': False, 'error': 'unknown method call: {}'.format(mode)}
         else:
-            return {'response': False, 'error': 'invalid mode'}
+            return getattr(self, mode)(params)
 
-    def liststatus(self, imdbid=None):
+    @api_json_out
+    def liststatus(self, filters):
         ''' Returns status of user's movies
-        :param imdbid: imdb id number of movie <optional>
+        filters (dict): filters to apply to database request
 
-        Returns list of movie details from MOVIES table. If imdbid is not supplied
-            returns all movie details.
+        Returns all movies where col:val pairs match all key:val pairs in filters
 
-        Returns str dict)
+        Returns list of movie details from MOVIES table.
+
+        Returns dict
         '''
 
-        logging.info('API request movie list.')
+        logging.info('API request movie list -- filters: {}'.format(filters))
         movies = core.sql.get_user_movies()
         if not movies:
-            return 'No movies found.'
+            return {'response': True, 'movies': []}
 
-        if imdbid:
-            for i in movies:
-                if i['imdbid'] == imdbid:
-                    if i['status'] == 'Disabled':
-                        i['status'] = 'Finished'
-                    return {'response': True, 'movie': i}
-        else:
-            for i in movies:
-                if i['status'] == 'Disabled':
-                    i['status'] = 'Finished'
-            return {'response': True, 'movies': movies}
+        for i in filters.keys():
+            if i not in core.sql.MOVIES.columns:
+                return {'response': False, 'error': 'Invalid filter key: {}'.format(i)}
 
-    def addmovie(self, imdbid=None, tmdbid=None, quality=None):
+        return {'response': True, 'movies': [i for i in movies if all(i[k] == v for k, v in filters.items())]}
+
+    @api_json_out
+    def addmovie(self, params):
         ''' Add movie with default quality settings
-        imdbid (str): imdb id #
+        params (dict): params passed in request url
 
-        Returns str dict) {'status': 'success', 'message': 'X added to wanted list.'}
+        params must contain either 'imdbid' or 'tmdbid' key and value
+
+        Returns dict {'status': 'success', 'message': 'X added to wanted list.'}
         '''
+
+        if not (params.get('imdbid') or params.get('tmdbid')):
+            return {'response': False, 'error': 'no movie id supplied'}
+        elif (params.get('imdbid') and params.get('tmdbid')):
+            return {'response': False, 'error': 'multiple movie ids supplied'}
 
         origin = cherrypy.request.headers.get('User-Agent', 'API')
         origin = 'API' if origin.startswith('Mozilla/') else origin
-        if quality is None:
-            quality = 'Default'
 
-        if imdbid:
+        quality = params.get('quality') or core.config.default_profile()
+
+        if params.get('imdbid'):
+            imdbid = params['imdbid']
             logging.info('API request add movie imdb {}'.format(imdbid))
-            movie = self.tmdb._search_imdbid(imdbid)
+            movie = TheMovieDatabase._search_imdbid(imdbid)
             if not movie:
                 return {'response': False, 'error': 'Cannot find {} on TMDB'.format(imdbid)}
             else:
                 movie = movie[0]
                 movie['imdbid'] = imdbid
-        elif tmdbid:
+        elif params.get('tmdbid'):
+            tmdbid = params['tmdbid']
             logging.info('API request add movie tmdb {}'.format(tmdbid))
-            movie = self.tmdb._search_tmdbid(tmdbid)
+            movie = TheMovieDatabase._search_tmdbid(tmdbid)
 
             if not movie:
                 return {'response': False, 'error': 'Cannot find {} on TMDB'.format(tmdbid)}
@@ -262,24 +261,69 @@ class API(object):
         movie['status'] = 'Waiting'
         movie['origin'] = origin
 
-        return core.manage.add_movie(movie, full_metadata=True)
+        response = Manage.add_movie(movie, full_metadata=True)
+        if response['response'] and core.CONFIG['Search']['searchafteradd'] and movie['year'] != 'N/A':
+            threading.Thread(target=searcher._t_search_grab, args=(movie,)).start()
 
-    def removemovie(self, imdbid):
+        return response
+
+    @api_json_out
+    def removemovie(self, params):
         ''' Remove movie from library
-        imdbid (str): imdb id #
+        params (dict): params passed in request url, must include imdbid
 
-        Returns str dict)
+        Returns dict
+        '''
+        if not params.get('imdbid'):
+            return {'response': False, 'error': 'no imdbid supplied'}
+
+        logging.info('API request remove movie {}'.format(params['imdbid']))
+
+        return Manage.remove_movie(params['imdbid'])
+
+    def poster(self, params):
+        ''' Return poster
+        params (dict): params passed in request url, must include imdbid
+
+        Returns image as binary datastream with image/jpeg content type header
         '''
 
-        logging.info('API request remove movie {}'.format(imdbid))
+        cherrypy.response.headers['Content-Type'] = "image/jpeg"
+        try:
+            with open(os.path.abspath(os.path.join(core.USERDATA, 'posters', '{}.jpg'.format(params['imdbid']))), 'rb') as f:
+                img = f.read()
+            return img
+        except KeyError as e:
+            err = {'response': False, 'error': 'no imdbid supplied'}
+        except FileNotFoundError as e:
+            err = {'response': False, 'error': 'file not found: {}.jpg'.format(params['imdbid'])}
+        except Exception as e:
+            err = {'response': False, 'error': str(e)}
+        finally:
+            cherrypy.response.headers['Content-Type'] = 'application/json'
+            return json.dumps(err).encode('utf-8')
 
-        return core.manage.remove_movie(imdbid)
-
-    def version(self):
+    @api_json_out
+    def version(self, *args):
         ''' Simple endpoint to return commit hash
-
         Mostly used to test connectivity without modifying the server.
 
-        Returns str dict)
+        Returns dict
         '''
         return {'response': True, 'version': core.CURRENT_HASH, 'api_version': api_version}
+
+    @api_json_out
+    def getconfig(self, *args):
+        ''' Returns config contents as JSON object
+        '''
+        return {'response': True, 'config': core.CONFIG}
+
+    @api_json_out
+    def server_shutdown(self, *args):
+        threading.Timer(1, core.shutdown).start()
+        return {'response': True}
+
+    @api_json_out
+    def server_restart(self, *args):
+        threading.Timer(1, core.restart).start()
+        return {'response': True}

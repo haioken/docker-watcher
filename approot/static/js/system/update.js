@@ -1,4 +1,4 @@
-$(document).ready(function(){
+window.addEventListener("DOMContentLoaded", function(){
     var updating = $("meta[name='updating']").attr("content");
 
     if(updating.toLowerCase() == 'false'){
@@ -6,8 +6,8 @@ $(document).ready(function(){
         return;
     }
 
-    $thinker = $("div#thinker");
-    $thinker.show();
+    $thinker = document.getElementById("thinker");
+    $thinker.style.maxHeight = '100%';
 
     $message = $("div.message");
 
@@ -32,13 +32,13 @@ $(document).ready(function(){
                 var $tasks_list = $("div.tasks")
 
                 if(r["response"] == false){
-                    $thinker.fadeOut();
+                    $thinker.style.maxHeight = '0%';
                     $.notify({message: r["error"]}, {type: "danger", delay: 0});
                     return
                 }
                 else if(r["status"] == "waiting"){
                     $tasks_list.show();
-                    $thinker.css("opacity", "0.25")
+                    $thinker.style.opacity = 0.25;
                     var $active_tasks = $("div.tasks > div")
                     var active_names = [];
 
@@ -53,13 +53,13 @@ $(document).ready(function(){
 
                     $(r["active_tasks"]).each(function(index, name){
                         if(active_names.indexOf(name) == -1){
-                            $tasks_list.append(`<div>${name}</div>`)
+                            $tasks_list.innerHTML += `<div>${name}</div>`;
                         }
                     });
                 }
                 else if(r["status"] == "updating"){
                     $tasks_list.fadeOut();
-                    $thinker.css("opacity", 1);
+                    $thinker.style.opacity = 1;
                     $("div.updating").fadeIn();
                 }
                 else if(r["status"] == "complete"){
@@ -100,7 +100,7 @@ function restart(){
         } else {
             clearInterval(check);
             $.notify({title: "<u>Timout Exceeded</u><br/>", message: "Watcher is taking too long to restart. Please check your logs and restart manually."}, {type: "warning", delay: 0})
-            $thinker.css("opacity", 0);
+            $thinker.style.maxHeight = '0%';
         }
     }, 3000);
 }

@@ -56,11 +56,8 @@ def add_torrent(data):
     Adds label if set in config
 
     Returns dict {'response': True, 'downloadid': 'id'}
-                    {'response': False, 'error': 'exception'}
-
+                 {'response': False, 'error': 'exception'}
     '''
-    global client
-
     logging.info('Sending torrent {} to rTorrent HTTP RPC Plugin.'.format(data['title']))
 
     conf = core.CONFIG['Downloader']['Torrent']['rTorrentHTTP']
@@ -71,7 +68,7 @@ def add_torrent(data):
             return {'response': False, 'error': connected}
 
     try:
-        downloadid = Torrent.get_hash(data['torrentfile']).upper()
+        downloadid = Torrent.get_hash(data['torrentfile'])
 
         if conf['addpaused']:
             client.load(data['torrentfile'])

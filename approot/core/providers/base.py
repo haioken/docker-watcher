@@ -1,8 +1,8 @@
 from xml.etree.cElementTree import fromstring
 from xmljson import yahoo
-import urllib.parse
 import logging
 import re
+import urllib.parse
 
 import core
 from core.helpers import Url
@@ -20,20 +20,30 @@ class NewzNabProvider(object):
 
     '''
 
-    def search_newznab(self, url_base, apikey, **params):
+    def search_newznab(self, url_base, apikey, type_, q=None, imdbid=None):
         ''' Searches Newznab/Torznab for movie
         url_base (str): base url for all requests (https://indexer.com/)
         apikey (str): api key for indexer
-        params (dict): parameters to url encode and append to url
+        type_ (str): one of 'movie' or 'search'
+        q (str): query to use with type_ == 'search'
+        imdbid (str): imdbid
 
         Creates url based off url_base. Appends url-encoded **params to url.
 
         Returns list of dicts of search results
         '''
 
-        url = '{}api?apikey={}&{}'.format(url_base, apikey, urllib.parse.urlencode(params))
+        url = '{}api?apikey={}&cat=2000&extended=1'.format(url_base, apikey)
 
-        logging.info('SEARCHING: {}api?apikey=APIKEY&{}'.format(url_base, urllib.parse.urlencode(params)))
+        if type_ == 'movie':
+            url += '&t=movie&imdbid={}'.format(imdbid[2:])
+        elif type_ == 'search':
+            url += '&t=search&q={}'.format(q)
+        else:
+            logging.error('Unknown search method {}'.format(type_))
+            return []
+
+        logging.info('SEARCHING: {}'.format(url.replace(apikey, 'APIKEY')))
 
         proxy_enabled = core.CONFIG['Server']['Proxy']['enabled']
 
@@ -43,7 +53,7 @@ class NewzNabProvider(object):
             else:
                 response = Url.open(url).text
 
-            return self.parse_newznab_xml(response)
+            return self.parse_newznab_xml(response, imdbid=imdbid)
         except (SystemExit, KeyboardInterrupt):
             raise
         except Exception as e:
@@ -55,8 +65,6 @@ class NewzNabProvider(object):
 
         Returns list of dicts with parsed release info
         '''
-
-        self.imdbid = None
 
         proxy_enabled = core.CONFIG['Server']['Proxy']['enabled']
 
@@ -94,10 +102,10 @@ class NewzNabProvider(object):
 
         return results
 
-    def parse_newznab_xml(self, feed):
+    def parse_newznab_xml(self, feed, imdbid=None):
         ''' Parse xml from Newznab api.
         feed (str): xml feed text
-        imdbid (str): imdb id #
+        imdbid (str): imdb id #. Just numbers, do not include 'tt'
 
         Replaces all namespaces with 'ns', so namespaced attributes are
             accessible with the key '{ns}attr'
@@ -115,7 +123,7 @@ class NewzNabProvider(object):
         try:
             channel = yahoo.data(fromstring(feed))['rss']['channel']
             indexer = channel['title']
-            items = channel['item']
+            items = channel.get('item', [])
             if type(items) != list:
                 items = [items]
         except Exception as e:
@@ -128,14 +136,28 @@ class NewzNabProvider(object):
                 for i in item['{ns}attr']:
                     item['attr'][i['name']] = i['value']
 
+                if(self.feed_type == 'torrent'):
+                    # Jackett doesn't properly encode query string params so we do it here.
+                    rt, qs = item.get('link', '?').split('?')
+                    if rt == qs == '':
+                        guid = None
+                    else:
+                        rt = rt + '?'
+                        qsprs = urllib.parse.parse_qs(qs)
+                        for k in qsprs:
+                            rt += '{}={}&'.format(k, urllib.parse.quote(qsprs[k][0]))
+                        guid = rt[:-1]
+                else:
+                    guid = item.get('link')
+
                 result = {
                     "download_client": None,
                     "downloadid": None,
                     "freeleech": 1 if item['attr'].get('downloadvolumefactor', 1) == 0 else 0,
-                    "guid": item.get('link'),
-                    "imdbid": self.imdbid,
+                    "guid": guid,
                     "indexer": indexer,
                     "info_link": item.get('comments', '').split('#')[0],
+                    "imdbid": imdbid if imdbid is not None else 'tt{}'.format(item['attr'].get('imdb')),
                     "pubdate": item.get('pubDate', '')[5:16],
                     "score": 0,
                     "seeders": 0,

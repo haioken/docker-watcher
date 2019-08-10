@@ -10,7 +10,16 @@ import sqlalchemy as sqla
 
 logging = logging.getLogger(__name__)
 
-current_version = 6
+current_version = 9
+
+
+def proxy_to_dict(p):
+    ''' Conversts sqla resultproxy to dict
+    p (resultproxy): response from sqla call
+
+    returns list of dicts
+    '''
+    return [dict(i) for i in p]
 
 
 class SQL(object):
@@ -60,7 +69,8 @@ class SQL(object):
                                  sqla.Column('alternative_titles', sqla.TEXT),
                                  sqla.Column('media_release_date', sqla.TEXT),
                                  sqla.Column('origin', sqla.TEXT),
-                                 sqla.Column('sort_title', sqla.TEXT)
+                                 sqla.Column('sort_title', sqla.TEXT),
+                                 sqla.Column('filters', sqla.TEXT)
                                  )
         self.SEARCHRESULTS = sqla.Table('SEARCHRESULTS', self.metadata,
                                         sqla.Column('score', sqla.SMALLINT),
@@ -117,7 +127,7 @@ class SQL(object):
         ''' Creates database and recreates self.engine
         DB_NAME (str): absolute file path to database
 
-        Does not return. DO NOT supress exceptions, this MUST succeed for Watcer to start.
+        Does not return. DO NOT supress exceptions, this MUST succeed for Watcher to start.
         '''
         logging.info('Creating Database tables.')
         print('Creating tables.')
@@ -148,8 +158,7 @@ class SQL(object):
         tries = 0
         while tries < 5:
             try:
-                result = self.engine.execute(*command)
-                return result
+                return self.engine.execute(*command)
 
             except Exception as e:
                 logging.error('SQL Database Query: {}.'.format(command), exc_info=True)
@@ -236,24 +245,15 @@ class SQL(object):
             logging.error('Unable to update database row.')
             return False
 
-    def update_multiple_values(self, TABLE, data, imdbid='', guid=''):
+    def update_multiple_values(self, TABLE, data, idcol, idval):
         ''' Updates mulitple values in a single sql row
         TABLE (str): database table to access
         data (dict): key/value pairs to update in table
-        imdbid (str): imdbid # of movie to update
-        guid (str): guid of search result to update
+        idcol (str): column to use to id row to write to
+        idval (str): value to use to id row to write to
 
         Return bool.
         '''
-
-        if imdbid:
-            idcol = 'imdbid'
-            idval = imdbid
-        elif guid:
-            idcol = 'guid'
-            idval = guid
-        else:
-            return False
 
         logging.debug('Updating {}:{} to {} in {}.'.format(idcol, idval.split('&')[0], data, TABLE))
 
@@ -348,31 +348,35 @@ class SQL(object):
         result = self.execute([command])
 
         if result:
-            return [dict(i) for i in result]
+            return proxy_to_dict(result)
         else:
             logging.error('Unable to get list of user\'s movies.')
             return []
 
-    def get_library_count(self, hide_finished=False):
+    def get_library_count(self):
         ''' Gets count of rows in MOVIES
+        Gets total count and Finished count
 
-        Returns int
+        Returns tuple (int, int)
         '''
 
         logging.debug('Getting count of library.')
 
-        filters = ' WHERE status NOT IN ("Finished", "Disabled")' if hide_finished else ''
-
-        command = 'SELECT COUNT(1) FROM MOVIES' + filters
-
-        result = self.execute([command])
-
+        result = self.execute(['SELECT COUNT(1) FROM MOVIES'])
         if result:
-            x = result.fetchone()[0]
-            return x
+            c = result.fetchone()[0]
         else:
             logging.error('Unable to get count of user\'s movies.')
-            return 0
+            return (0, 0)
+
+        result = self.execute(['SELECT COUNT(1) FROM MOVIES WHERE status IN ("Finished", "Disabled")'])
+        if result:
+            f = result.fetchone()[0]
+        else:
+            logging.error('Unable to get count of user\'s movies.')
+            return (0, 0)
+
+        return (c, f)
 
     def get_movie_details(self, idcol, idval):
         ''' Returns dict of single movie details from MOVIES.
@@ -419,13 +423,21 @@ class SQL(object):
         else:
             sort = 'DESC'
 
-        command = ['SELECT * FROM SEARCHRESULTS WHERE imdbid="{}" ORDER BY score DESC, size {}, freeleech DESC'.format(imdbid, sort)]
+        if core.CONFIG['Search']['preferredsource'] == '':
+            sk = ''
+        else:
+            sk = ''', CASE type WHEN "nzb" THEN 0
+                                WHEN "torrent" THEN 1
+                                WHEN "magnet" THEN 1
+                    END {}
+                '''.format('ASC' if core.CONFIG['Search']['preferredsource'] == 'usenet' else 'DESC')
+
+        command = ['SELECT * FROM SEARCHRESULTS WHERE imdbid="{}" ORDER BY score DESC {}, size {}, freeleech DESC'.format(imdbid, sk, sort)]
 
         results = self.execute(command)
 
         if results:
-            res = results.fetchall()
-            return [dict(i) for i in res]
+            return proxy_to_dict(results.fetchall())
         else:
             return []
 
@@ -797,7 +809,7 @@ class SQL(object):
 
         Returns list of dicts
         '''
-        return [dict(i) for i in self.execute(['SELECT * FROM {}'.format(table)])]
+        return proxy_to_dict(self.execute(['SELECT * FROM {}'.format(table)]))
 
     def system(self, name):
         ''' Gets 'data' column from SYSTEM table for name
@@ -814,6 +826,22 @@ class SQL(object):
             return result.fetchone()[0]
         else:
             return None
+
+    def quick_titles(self):
+        ''' Gets titles and ids from library
+
+        Gets a simple tuple of (title, tmdbid, imdbid) for every movie in MOVIES
+
+        Returns list of tuples
+        '''
+
+        logging.debug('Retrieving random movie id')
+
+        command = ['SELECT title, tmdbid, imdbid FROM MOVIES ORDER BY sort_title']
+
+        result = self.execute(command)
+
+        return [tuple(i) for i in result.fetchall()] if result else []
 
 
 class DatabaseUpdate(object):
@@ -930,5 +958,42 @@ class DatabaseUpdate(object):
         ''' Add SYSTEM table and imdb_sync_record'''
         core.sql.update_tables()
         core.sql.write('SYSTEM', {'name': 'imdb_sync_record', 'data': '{}'})
+
+    @staticmethod
+    def update_7():
+        ''' Fix missing 'tt' in imdbid column of SEARCHRESULTS '''
+        values = []
+
+        d = core.sql.dump('SEARCHRESULTS')
+        l = len(d)
+
+        for ind, i in enumerate(d):
+            print('{}%\r'.format(int((ind + 1) / l * 100)), end='')
+            if i['imdbid'] and not i['imdbid'].startswith('tt'):
+                n = 'tt' + i['imdbid']
+                values.append({'imdbid': n, 'guid': i['guid']})
+        if values:
+            core.sql.update_multiple_rows('SEARCHRESULTS', values, 'guid')
+        print()
+
+    @staticmethod
+    def update_8():
+        ''' Add filters column to MOVIES '''
+        core.sql.update_tables()
+
+    @staticmethod
+    def update_9():
+        values = []
+
+        d = core.sql.dump('MOVIES')
+        l = len(d)
+
+        for ind, i in enumerate(d):
+            print('{}%\r'.format(int((ind + 1) / l * 100)), end='')
+            if not i['filters']:
+                values.append({'imdbid': i['imdbid'], 'filters': '{"preferredwords": "", "requiredwords": "", "ignoredwords": ""}'})
+        if values:
+            core.sql.update_multiple_rows('MOVIES', values, 'imdbid')
+        print()
 
     # Adding a new method? Remember to update the current_version #

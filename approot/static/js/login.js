@@ -1,34 +1,38 @@
-$(document).ready(function(){
-    url_base = $("meta[name='url_base']").attr("content");
+window.addEventListener("DOMContentLoaded", function(){
+    url_base = document.querySelector("meta[name='url_base']").content;
 
-    $("input").keyup(function(event){
-        if(event.keyCode == 13){
-            login(event);
-        }
-    });
+    $input_user = document.querySelector('input#user');
+    $input_password = document.querySelector('input#password');
 
-    $("input").click(function(){
-        $(this).removeClass("empty");
-    });
+    $input_user.focus();
+
+    var ins = document.querySelectorAll('input');
+    for (var i = 0; i < ins.length; i++){
+        var input = ins[i];
+        input.addEventListener('keyup', function(event){
+            if(event.keyCode == 13){
+                login(event);
+            }
+        });
+        input.addEventListener('click', function(event){
+            input.classList.remove('border-danger');
+        });
+    }
 });
 
 function login(event){
     event.preventDefault();
 
-    var $input_user = $('input#user');
-    var user = $input_user.val();
-    var $input_password = $('input#password');
-    var password = $input_password.val();
     var blanks = false;
 
-    if(!user){
+    if(!$input_user.value){
         blanks = true;
-        $input_user.addClass("empty");
+        $input_user.classList.add("border-danger");
     }
 
-    if(!password){
+    if(!$input_password.value){
         blanks = true;
-        $input_password.addClass("empty");
+        $input_password.classList.add("border-danger");
     }
 
     if(blanks == true){
@@ -36,8 +40,8 @@ function login(event){
     };
 
     $.post(url_base + "/auth/login", {
-        "username": user,
-        "password": password
+        "username": $input_user.value,
+        "password": $input_password.value
     })
     .done(function(response){
         if(response){
@@ -46,12 +50,12 @@ function login(event){
                 loc = loc.slice(0, -1);
             }
             if(loc.split("/").pop() == "auth"){
-                window.location = url_base+"/library/status"
+                window.location = url_base + "/library/status"
             } else {
                 location.reload()
             }
         } else {
-            $input_password.val("");
+            $input_password.value = '';
         }
     })
     .fail(function(data){

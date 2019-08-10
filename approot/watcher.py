@@ -2,9 +2,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'lib'))
 
-MIN_PYTHON = (3, 0, 0)
-if sys.version_info < MIN_PYTHON:
-    print('Python {} or newer required.'.format('.'.join(MIN_PYTHON)))
+if sys.version_info < (3, 0, 0):
+    print('Python 3.0 or newer required. Currently {}.'.format(sys.version.split(' ')[0]))
     sys.exit(1)
 
 import core         # noqa
@@ -13,7 +12,6 @@ os.chdir(core.PROG_PATH)
 core.SCRIPT_PATH = os.path.join(core.PROG_PATH, os.path.basename(__file__))
 if os.name == 'nt':
     core.PLATFORM = 'windows'
-    from core.cp_plugins import systray
 else:
     core.PLATFORM = '*nix'
 
@@ -45,13 +43,13 @@ if __name__ == '__main__':
     parser.add_argument('-a', '--address', help='Network address to bind to.')
     parser.add_argument('-p', '--port', help='Port to bind to.', type=int)
     parser.add_argument('-b', '--browser', help='Open browser on launch.', action='store_true')
-    parser.add_argument('-c', '--conf', help='Location of config file.', type=str)
     parser.add_argument('--userdata', help='Userdata dir containing database, config, etc.', type=str)
+    parser.add_argument('-c', '--conf', help='Location of config file.', type=str)
     parser.add_argument('-l', '--log', help='Directory in which to create log files.', type=str)
     parser.add_argument('--db', help='Absolute path to database file.', type=str)
     parser.add_argument('--plugins', help='Directory in which plugins are stored.', type=str)
     parser.add_argument('--pid', help='Directory in which to store pid file.', type=str)
-    parser.add_argument('--debug', help='Start in Debug mode.', action='store_true')
+    parser.add_argument('--stdout', help='Print all log messages to STDOUT.', action='store_true')
     passed_args = parser.parse_args()
 
     if passed_args.userdata:
@@ -72,25 +70,23 @@ if __name__ == '__main__':
         core.PLUGIN_DIR = passed_args.plugins
 
     # set up db connection
-    from core import sqldb, library
+    from core import sqldb
     core.sql = sqldb.SQL()
     core.sql.update_database()
-    core.manage = library.Manage()
 
     # set up config file on first launch
     from core import config
-    conf = config.Config()
     if not os.path.isfile(core.CONF_FILE):
-        print('\033[33m Config file not found. Creating new basic config {}. Please review settings. \033[0m'.format(core.CONF_FILE))
-        conf.new_config()
+        print('\033[33m## Config file not found. Creating new basic config {}. Please review settings. \033[0m'.format(core.CONF_FILE))
+        config.new_config()
     else:
         print('Config file found, merging any new options.')
-        conf.merge_new_options()
-    conf.stash()
+        config.merge_new_options()
+    config.load()
 
     # Set up logging
     from core import log
-    log.start(core.LOG_DIR, passed_args.debug or False)
+    log.start(core.LOG_DIR, passed_args.stdout or False)
     logging = logging.getLogger(__name__)
     cherrypy.log.error_log.propagate = True
     cherrypy.log.access_log.propagate = False
@@ -99,7 +95,7 @@ if __name__ == '__main__':
     try:
         print('Clearing Mako cache.')
         shutil.rmtree(core.MAKO_CACHE)
-    except FileNotFoundError:
+    except FileNotFoundError:  # noqa: F821 : Flake8 doesn't know about some built-in exceptions
         pass
     except Exception as e:
         print('\033[31m Unable to clear Mako cache. \033[0m')
@@ -124,6 +120,8 @@ if __name__ == '__main__':
     if core.CONFIG['Server']['customwebroot']:
         core.URL_BASE = core.CONFIG['Server']['customwebrootpath']
 
+    core.SERVER_URL = 'http://{}:{}{}'.format(core.SERVER_ADDRESS, core.SERVER_PORT, core.URL_BASE)
+
     root = cherrypy.tree.mount(App(), '{}/'.format(core.URL_BASE), 'core/conf_app.ini')
 
     # Start plugins
@@ -131,7 +129,9 @@ if __name__ == '__main__':
         if core.PLATFORM == '*nix':
             Daemonizer(cherrypy.engine).subscribe()
         elif core.PLATFORM == 'windows':
-            systrayplugin = systray.SysTrayPlugin(cherrypy.engine)
+            from cherrypysytray import SysTrayPlugin  # noqa
+            menu_options = (('Open Browser', None, lambda *args: webbrowser.open(core.SERVER_URL)),)
+            systrayplugin = SysTrayPlugin(cherrypy.engine, 'core/favicon.ico', 'Watcher', menu_options)
             systrayplugin.subscribe()
             systrayplugin.start()
 
